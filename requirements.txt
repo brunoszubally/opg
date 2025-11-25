@@ -1,0 +1,10 @@
+# Python dependencies for OPG Sync Service
+
+# HTTP requests (for NAV API and Adalo API)
+requests>=2.31.0
+
+# Web framework
+Flask>=3.0.0
+
+# Production WSGI server
+gunicorn>=21.2.0

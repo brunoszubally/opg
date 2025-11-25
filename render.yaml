@@ -1,0 +1,31 @@
+# Render.com deployment configuration for OPG Sync Service
+# https://render.com/docs/yaml-spec
+
+services:
+  # Web service - Flask API
+  - type: web
+    name: opg-sync-api
+    env: python
+    region: frankfurt  # EU region for lower latency to Hungary
+    plan: starter  # Free tier or starter plan
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 web_api:app
+    healthCheckPath: /health
+    envVars:
+      # Adalo configuration
+      - key: ADALO_APP_ID
+        value: 3c27d7d7-fe9d-45ae-856c-27d202debf81
+      - key: ADALO_API_KEY
+        sync: false  # Set via Render dashboard (secret)
+      - key: ADALO_USERS_COLLECTION_ID
+        value: t_13c9aa8bd9dd423b8118565dec7fb3de
+      - key: ADALO_REVENUES_COLLECTION_ID
+        value: t_22imanannzgjm04zm2rbifxzm
+
+      # API authentication
+      - key: API_KEY
+        sync: false  # Set via Render dashboard (secret)
+
+      # Python configuration
+      - key: PYTHON_VERSION
+        value: 3.11

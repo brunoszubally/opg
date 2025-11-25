@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment
+.env
+.env.local
+
+# Downloaded data
+opg_downloads/
+test_downloads/
+test_sync_downloads/
+extracted_xml/
+extracted_xml.zip
+
+# Backup files
+*.backup
+opg.py.backup
+temp_opg_wrapper.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+test_*.py
+test_*.sh
+verify_sync.py
+LOCAL_TEST.md
+TESTING_SUMMARY.md
+
+# Temporary
+tmp/
+temp/
