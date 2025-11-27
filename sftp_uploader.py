@@ -1,7 +1,7 @@
 """
-SFTP Uploader Module
+FTP Uploader Module
 
-Handles uploading XML files to SFTP server with directory structure:
+Handles uploading XML files to FTP server with directory structure:
 /ap_number/year/ (e.g., /A29200455/2025/)
 """
 
@@ -9,21 +9,21 @@ import os
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
-import paramiko
+from ftplib import FTP
 
 
-class SFTPUploader:
-    """SFTP uploader for NAV OPG XML files."""
+class FTPUploader:
+    """FTP uploader for NAV OPG XML files."""
 
-    def __init__(self, host: str, username: str, password: str, port: int = 22, base_path: str = "/"):
+    def __init__(self, host: str, username: str, password: str, port: int = 21, base_path: str = "/"):
         """
-        Initialize SFTP uploader.
+        Initialize FTP uploader.
 
         Args:
-            host: SFTP server hostname
-            username: SFTP username
-            password: SFTP password
-            port: SFTP port (default 22)
+            host: FTP server hostname
+            username: FTP username
+            password: FTP password
+            port: FTP port (default 21)
             base_path: Base directory on server (default "/")
         """
         self.host = host
@@ -31,45 +31,36 @@ class SFTPUploader:
         self.password = password
         self.port = port
         self.base_path = base_path.rstrip('/')
-        self.client = None
-        self.sftp = None
+        self.ftp = None
 
     def connect(self) -> bool:
         """
-        Connect to SFTP server.
+        Connect to FTP server.
 
         Returns:
             True if connected successfully, False otherwise
         """
         try:
-            self.client = paramiko.SSHClient()
-            self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-            self.client.connect(
-                hostname=self.host,
-                port=self.port,
-                username=self.username,
-                password=self.password,
-                timeout=30
-            )
-
-            self.sftp = self.client.open_sftp()
+            self.ftp = FTP()
+            self.ftp.connect(self.host, self.port, timeout=30)
+            self.ftp.login(self.username, self.password)
             return True
 
         except Exception as e:
-            print(f"SFTP connection failed: {e}")
+            print(f"FTP connection failed: {e}")
             return False
 
     def disconnect(self):
-        """Disconnect from SFTP server."""
-        if self.sftp:
-            self.sftp.close()
-        if self.client:
-            self.client.close()
+        """Disconnect from FTP server."""
+        if self.ftp:
+            try:
+                self.ftp.quit()
+            except:
+                self.ftp.close()
 
     def _ensure_directory(self, remote_path: str) -> bool:
         """
-        Ensure directory exists on SFTP server, create if needed.
+        Ensure directory exists on FTP server, create if needed.
 
         Args:
             remote_path: Remote directory path
@@ -78,17 +69,21 @@ class SFTPUploader:
             True if directory exists or was created, False otherwise
         """
         try:
-            self.sftp.stat(remote_path)
+            # Try to change to directory
+            self.ftp.cwd(remote_path)
             return True
-        except FileNotFoundError:
+        except:
             # Directory doesn't exist, try to create it
             try:
                 # Create parent directories recursively
                 parent = str(Path(remote_path).parent)
                 if parent != '/' and parent != remote_path:
                     self._ensure_directory(parent)
+                    self.ftp.cwd(parent)
 
-                self.sftp.mkdir(remote_path)
+                # Create directory
+                dir_name = Path(remote_path).name
+                self.ftp.mkd(dir_name)
                 print(f"  Created directory: {remote_path}")
                 return True
             except Exception as e:
@@ -97,7 +92,7 @@ class SFTPUploader:
 
     def upload_file(self, local_path: Path, remote_path: str) -> bool:
         """
-        Upload single file to SFTP server.
+        Upload single file to FTP server.
 
         Args:
             local_path: Local file path
@@ -112,8 +107,14 @@ class SFTPUploader:
             if not self._ensure_directory(remote_dir):
                 return False
 
-            # Upload file
-            self.sftp.put(str(local_path), remote_path)
+            # Change to target directory
+            self.ftp.cwd(remote_dir)
+
+            # Upload file in binary mode
+            with open(local_path, 'rb') as f:
+                remote_filename = Path(remote_path).name
+                self.ftp.storbinary(f'STOR {remote_filename}', f)
+
             print(f"  Uploaded: {local_path.name} -> {remote_path}")
             return True
 
@@ -123,7 +124,7 @@ class SFTPUploader:
 
     def upload_xml_files(self, xml_files: List[Path], ap_number: str, year: int) -> Dict:
         """
-        Upload multiple XML files to SFTP server.
+        Upload multiple XML files to FTP server.
 
         Directory structure: /base_path/ap_number/year/
         Example: /A29200455/2025/A29200455_69785346_20251119174852_1079.xml
@@ -152,7 +153,7 @@ class SFTPUploader:
             result['success'] = True
             return result
 
-        # Connect to SFTP
+        # Connect to FTP
         if not self.connect():
             return result
 
@@ -180,11 +181,11 @@ class SFTPUploader:
         return result
 
 
-def upload_files_to_sftp(xml_files: List[Path], ap_number: str, year: int,
-                        sftp_host: str, sftp_user: str, sftp_password: str,
-                        sftp_port: int = 22, sftp_base_path: str = "/") -> Dict:
+def upload_files_to_ftp(xml_files: List[Path], ap_number: str, year: int,
+                        ftp_host: str, ftp_user: str, ftp_password: str,
+                        ftp_port: int = 21, ftp_base_path: str = "/") -> Dict:
     """
-    Upload XML files to SFTP server.
+    Upload XML files to FTP server.
 
     Convenience function that creates uploader, uploads files, and returns results.
 
@@ -192,28 +193,28 @@ def upload_files_to_sftp(xml_files: List[Path], ap_number: str, year: int,
         xml_files: List of XML file paths
         ap_number: AP number (e.g., A29200455)
         year: Year (e.g., 2025)
-        sftp_host: SFTP server hostname
-        sftp_user: SFTP username
-        sftp_password: SFTP password
-        sftp_port: SFTP port (default 22)
-        sftp_base_path: Base directory on server (default "/")
+        ftp_host: FTP server hostname
+        ftp_user: FTP username
+        ftp_password: FTP password
+        ftp_port: FTP port (default 21)
+        ftp_base_path: Base directory on server (default "/")
 
     Returns:
         Dict with upload results
     """
-    uploader = SFTPUploader(
-        host=sftp_host,
-        username=sftp_user,
-        password=sftp_password,
-        port=sftp_port,
-        base_path=sftp_base_path
+    uploader = FTPUploader(
+        host=ftp_host,
+        username=ftp_user,
+        password=ftp_password,
+        port=ftp_port,
+        base_path=ftp_base_path
     )
 
     return uploader.upload_xml_files(xml_files, ap_number, year)
 
 
 if __name__ == "__main__":
-    # Test SFTP uploader
+    # Test FTP uploader
     import sys
 
     if len(sys.argv) < 2:
@@ -225,26 +226,26 @@ if __name__ == "__main__":
         print(f"File not found: {test_file}")
         sys.exit(1)
 
-    # Get SFTP config from environment
-    sftp_host = os.getenv('SFTP_HOST')
-    sftp_user = os.getenv('SFTP_USER')
-    sftp_password = os.getenv('SFTP_PASSWORD')
-    sftp_port = int(os.getenv('SFTP_PORT', '22'))
+    # Get FTP config from environment
+    ftp_host = os.getenv('FTP_HOST')
+    ftp_user = os.getenv('FTP_USER')
+    ftp_password = os.getenv('FTP_PASSWORD')
+    ftp_port = int(os.getenv('FTP_PORT', '21'))
 
-    if not all([sftp_host, sftp_user, sftp_password]):
-        print("Missing SFTP configuration in environment variables")
-        print("Required: SFTP_HOST, SFTP_USER, SFTP_PASSWORD")
+    if not all([ftp_host, ftp_user, ftp_password]):
+        print("Missing FTP configuration in environment variables")
+        print("Required: FTP_HOST, FTP_USER, FTP_PASSWORD")
         sys.exit(1)
 
     # Test upload
-    result = upload_files_to_sftp(
+    result = upload_files_to_ftp(
         xml_files=[test_file],
         ap_number="A29200455",
         year=2025,
-        sftp_host=sftp_host,
-        sftp_user=sftp_user,
-        sftp_password=sftp_password,
-        sftp_port=sftp_port
+        ftp_host=ftp_host,
+        ftp_user=ftp_user,
+        ftp_password=ftp_password,
+        ftp_port=ftp_port
     )
 
     print(f"\nUpload result: {result}")

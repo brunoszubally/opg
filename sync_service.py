@@ -34,7 +34,7 @@ load_env()
 # Import NAV API functions from opg.py
 import opg
 from adalo_client import AdaloClient
-from sftp_uploader import upload_files_to_sftp
+from sftp_uploader import upload_files_to_ftp
 
 
 def get_nav_status(ap_number: str, credentials: Dict) -> Optional[Dict]:
@@ -416,39 +416,39 @@ def sync_user(user: Dict, adalo_client: AdaloClient, current_year: int = None) -
                 )
                 revenues_created += 1
 
-            # Upload XML files to SFTP (optional, only if configured)
-            sftp_result = None
-            sftp_host = os.getenv('SFTP_HOST')
-            sftp_user = os.getenv('SFTP_USER')
-            sftp_password = os.getenv('SFTP_PASSWORD')
+            # Upload XML files to FTP (optional, only if configured)
+            ftp_result = None
+            ftp_host = os.getenv('FTP_HOST')
+            ftp_user = os.getenv('FTP_USER')
+            ftp_password = os.getenv('FTP_PASSWORD')
 
-            if all([sftp_host, sftp_user, sftp_password]):
-                print(f"  Uploading {len(xml_files)} XML files to SFTP...")
+            if all([ftp_host, ftp_user, ftp_password]):
+                print(f"  Uploading {len(xml_files)} XML files to FTP...")
                 try:
-                    sftp_port = int(os.getenv('SFTP_PORT', '22'))
-                    sftp_base_path = os.getenv('SFTP_BASE_PATH', '/')
+                    ftp_port = int(os.getenv('FTP_PORT', '21'))
+                    ftp_base_path = os.getenv('FTP_BASE_PATH', '/')
 
-                    sftp_result = upload_files_to_sftp(
+                    ftp_result = upload_files_to_ftp(
                         xml_files=xml_files,
                         ap_number=ap_number,
                         year=current_year,
-                        sftp_host=sftp_host,
-                        sftp_user=sftp_user,
-                        sftp_password=sftp_password,
-                        sftp_port=sftp_port,
-                        sftp_base_path=sftp_base_path
+                        ftp_host=ftp_host,
+                        ftp_user=ftp_user,
+                        ftp_password=ftp_password,
+                        ftp_port=ftp_port,
+                        ftp_base_path=ftp_base_path
                     )
 
-                    if sftp_result['success']:
-                        print(f"  SFTP upload successful: {sftp_result['uploaded']} files")
+                    if ftp_result['success']:
+                        print(f"  FTP upload successful: {ftp_result['uploaded']} files")
                     else:
-                        print(f"  SFTP upload partial: {sftp_result['uploaded']} succeeded, {sftp_result['failed']} failed")
+                        print(f"  FTP upload partial: {ftp_result['uploaded']} succeeded, {ftp_result['failed']} failed")
 
                 except Exception as e:
-                    print(f"  SFTP upload error: {e}")
-                    sftp_result = {'success': False, 'uploaded': 0, 'failed': len(xml_files), 'error': str(e)}
+                    print(f"  FTP upload error: {e}")
+                    ftp_result = {'success': False, 'uploaded': 0, 'failed': len(xml_files), 'error': str(e)}
             else:
-                print(f"  SFTP upload skipped (not configured)")
+                print(f"  FTP upload skipped (not configured)")
 
             # Update user sync status
             now_iso = datetime.now(timezone.utc).isoformat()
@@ -462,18 +462,18 @@ def sync_user(user: Dict, adalo_client: AdaloClient, current_year: int = None) -
 
             # Build result message
             message = f'Synced {files_synced} files, created {revenues_created} daily revenue records'
-            if sftp_result:
-                if sftp_result['success']:
-                    message += f', uploaded {sftp_result["uploaded"]} files to SFTP'
+            if ftp_result:
+                if ftp_result['success']:
+                    message += f', uploaded {ftp_result["uploaded"]} files to FTP'
                 else:
-                    message += f', SFTP upload partial ({sftp_result["uploaded"]}/{len(xml_files)} files)'
+                    message += f', FTP upload partial ({ftp_result["uploaded"]}/{len(xml_files)} files)'
 
             return {
                 'success': True,
                 'message': message,
                 'files_synced': files_synced,
                 'revenues_created': revenues_created,
-                'sftp_uploaded': sftp_result['uploaded'] if sftp_result else None
+                'ftp_uploaded': ftp_result['uploaded'] if ftp_result else None
             }
 
     except Exception as e:

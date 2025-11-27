@@ -26,17 +26,17 @@ services:
       - key: API_KEY
         sync: false  # Set via Render dashboard (secret)
 
-      # SFTP configuration (optional - for storing XML files)
-      - key: SFTP_HOST
+      # FTP configuration (optional - for storing XML files)
+      - key: FTP_HOST
         sync: false  # Set via Render dashboard (optional)
-      - key: SFTP_USER
+      - key: FTP_USER
         sync: false  # Set via Render dashboard (optional)
-      - key: SFTP_PASSWORD
+      - key: FTP_PASSWORD
         sync: false  # Set via Render dashboard (optional, secret)
-      - key: SFTP_PORT
-        value: 22  # Default SSH/SFTP port
-      - key: SFTP_BASE_PATH
-        value: /  # Base directory on SFTP server
+      - key: FTP_PORT
+        value: 21  # Default FTP port
+      - key: FTP_BASE_PATH
+        value: /  # Base directory on FTP server
 
       # Python configuration
       - key: PYTHON_VERSION
