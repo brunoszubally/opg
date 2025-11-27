@@ -44,6 +44,11 @@ class FTPUploader:
             self.ftp = FTP()
             self.ftp.connect(self.host, self.port, timeout=30)
             self.ftp.login(self.username, self.password)
+
+            # Print current working directory for debugging
+            current_dir = self.ftp.pwd()
+            print(f"  FTP connected. Current directory: {current_dir}")
+
             return True
 
         except Exception as e:
@@ -61,15 +66,41 @@ class FTPUploader:
     def _ensure_directory(self, remote_path: str) -> bool:
         """
         Ensure directory exists on FTP server, create if needed.
-        Creates directories relative to current working directory.
+        Handles both absolute (/path/to/dir) and relative (path/to/dir) paths.
 
         Args:
-            remote_path: Remote directory path (relative)
+            remote_path: Remote directory path (absolute or relative)
 
         Returns:
             True if directory exists or was created, False otherwise
         """
-        # Split path into parts
+        # Handle absolute paths
+        if remote_path.startswith('/'):
+            try:
+                # Try to navigate to absolute path
+                self.ftp.cwd(remote_path)
+                return True
+            except:
+                # Path doesn't exist, create it recursively
+                parts = [p for p in remote_path.split('/') if p]
+                self.ftp.cwd('/')  # Start from root
+
+                current_path = ''
+                for part in parts:
+                    current_path = f"{current_path}/{part}"
+                    try:
+                        self.ftp.cwd(part)
+                    except:
+                        try:
+                            self.ftp.mkd(part)
+                            self.ftp.cwd(part)
+                            print(f"  Created directory: {current_path}")
+                        except Exception as e:
+                            print(f"  Failed to create directory {current_path}: {e}")
+                            return False
+                return True
+
+        # Handle relative paths
         parts = [p for p in remote_path.split('/') if p]
 
         if not parts:
@@ -108,8 +139,21 @@ class FTPUploader:
             True if uploaded successfully, False otherwise
         """
         try:
-            # Change to base directory first
-            self.ftp.cwd(self.base_path)
+            # Navigate to base directory (absolute or relative)
+            if self.base_path.startswith('/'):
+                # Absolute path - navigate directly
+                try:
+                    self.ftp.cwd(self.base_path)
+                except:
+                    # Create base path if it doesn't exist
+                    print(f"  Base path {self.base_path} doesn't exist, creating...")
+                    if not self._ensure_directory(self.base_path):
+                        return False
+                    self.ftp.cwd(self.base_path)
+            else:
+                # Relative path - ensure it exists first
+                if not self._ensure_directory(self.base_path):
+                    return False
 
             # Ensure target directory exists and navigate to it
             if not self._ensure_directory(remote_dir):
