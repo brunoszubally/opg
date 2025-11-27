@@ -15,7 +15,7 @@ from ftplib import FTP
 class FTPUploader:
     """FTP uploader for NAV OPG XML files."""
 
-    def __init__(self, host: str, username: str, password: str, port: int = 21, base_path: str = "/"):
+    def __init__(self, host: str, username: str, password: str, port: int = 21, base_path: str = "users/opg_bizonylatok"):
         """
         Initialize FTP uploader.
 
@@ -24,7 +24,7 @@ class FTPUploader:
             username: FTP username
             password: FTP password
             port: FTP port (default 21)
-            base_path: Base directory on server (default "/")
+            base_path: Base directory on server (default "users/opg_bizonylatok")
         """
         self.host = host
         self.username = username
@@ -61,61 +61,66 @@ class FTPUploader:
     def _ensure_directory(self, remote_path: str) -> bool:
         """
         Ensure directory exists on FTP server, create if needed.
+        Creates directories relative to current working directory.
 
         Args:
-            remote_path: Remote directory path
+            remote_path: Remote directory path (relative)
 
         Returns:
             True if directory exists or was created, False otherwise
         """
-        try:
-            # Try to change to directory
-            self.ftp.cwd(remote_path)
+        # Split path into parts
+        parts = [p for p in remote_path.split('/') if p]
+
+        if not parts:
             return True
-        except:
-            # Directory doesn't exist, try to create it
+
+        # Navigate/create each directory level
+        current_path = ''
+        for part in parts:
+            current_path = f"{current_path}/{part}" if current_path else part
+
             try:
-                # Create parent directories recursively
-                parent = str(Path(remote_path).parent)
-                if parent != '/' and parent != remote_path:
-                    self._ensure_directory(parent)
-                    self.ftp.cwd(parent)
+                # Try to change to directory
+                self.ftp.cwd(part)
+            except:
+                # Directory doesn't exist, create it
+                try:
+                    self.ftp.mkd(part)
+                    self.ftp.cwd(part)
+                    print(f"  Created directory: {current_path}")
+                except Exception as e:
+                    print(f"  Failed to create directory {current_path}: {e}")
+                    return False
 
-                # Create directory
-                dir_name = Path(remote_path).name
-                self.ftp.mkd(dir_name)
-                print(f"  Created directory: {remote_path}")
-                return True
-            except Exception as e:
-                print(f"  Failed to create directory {remote_path}: {e}")
-                return False
+        return True
 
-    def upload_file(self, local_path: Path, remote_path: str) -> bool:
+    def upload_file(self, local_path: Path, remote_dir: str, filename: str) -> bool:
         """
         Upload single file to FTP server.
 
         Args:
             local_path: Local file path
-            remote_path: Remote file path
+            remote_dir: Remote directory (relative to base path)
+            filename: Remote filename
 
         Returns:
             True if uploaded successfully, False otherwise
         """
         try:
-            # Ensure directory exists
-            remote_dir = str(Path(remote_path).parent)
+            # Change to base directory first
+            self.ftp.cwd(self.base_path)
+
+            # Ensure target directory exists and navigate to it
             if not self._ensure_directory(remote_dir):
                 return False
 
-            # Change to target directory
-            self.ftp.cwd(remote_dir)
-
             # Upload file in binary mode
             with open(local_path, 'rb') as f:
-                remote_filename = Path(remote_path).name
-                self.ftp.storbinary(f'STOR {remote_filename}', f)
+                self.ftp.storbinary(f'STOR {filename}', f)
 
-            print(f"  Uploaded: {local_path.name} -> {remote_path}")
+            full_path = f"{self.base_path}/{remote_dir}/{filename}".replace('//', '/')
+            print(f"  Uploaded: {local_path.name} -> {full_path}")
             return True
 
         except Exception as e:
@@ -126,8 +131,8 @@ class FTPUploader:
         """
         Upload multiple XML files to FTP server.
 
-        Directory structure: /base_path/ap_number/year/
-        Example: /A29200455/2025/A29200455_69785346_20251119174852_1079.xml
+        Directory structure: {base_path}/ap_number/year/
+        Example: users/opg_bizonylatok/A29200455/2025/
 
         Args:
             xml_files: List of XML file paths to upload
@@ -158,16 +163,15 @@ class FTPUploader:
             return result
 
         try:
-            # Create remote directory path: /base_path/ap_number/year/
-            remote_dir = f"{self.base_path}/{ap_number}/{year}"
+            # Remote directory: ap_number/year (relative to base_path)
+            remote_dir = f"{ap_number}/{year}"
+            full_path = f"{self.base_path}/{remote_dir}".replace('//', '/')
 
-            print(f"  Uploading {len(xml_files)} XML files to {remote_dir}...")
+            print(f"  Uploading {len(xml_files)} XML files to {full_path}...")
 
             # Upload each file
             for xml_file in xml_files:
-                remote_path = f"{remote_dir}/{xml_file.name}"
-
-                if self.upload_file(xml_file, remote_path):
+                if self.upload_file(xml_file, remote_dir, xml_file.name):
                     result['uploaded'] += 1
                     result['files'].append(xml_file.name)
                 else:
@@ -183,7 +187,7 @@ class FTPUploader:
 
 def upload_files_to_ftp(xml_files: List[Path], ap_number: str, year: int,
                         ftp_host: str, ftp_user: str, ftp_password: str,
-                        ftp_port: int = 21, ftp_base_path: str = "/") -> Dict:
+                        ftp_port: int = 21, ftp_base_path: str = "users/opg_bizonylatok") -> Dict:
     """
     Upload XML files to FTP server.
 

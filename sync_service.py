@@ -426,7 +426,7 @@ def sync_user(user: Dict, adalo_client: AdaloClient, current_year: int = None) -
                 print(f"  Uploading {len(xml_files)} XML files to FTP...")
                 try:
                     ftp_port = int(os.getenv('FTP_PORT', '21'))
-                    ftp_base_path = os.getenv('FTP_BASE_PATH', '/')
+                    ftp_base_path = os.getenv('FTP_BASE_PATH', 'users/opg_bizonylatok')
 
                     ftp_result = upload_files_to_ftp(
                         xml_files=xml_files,

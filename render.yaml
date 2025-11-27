@@ -36,7 +36,7 @@ services:
       - key: FTP_PORT
         value: 21  # Default FTP port
       - key: FTP_BASE_PATH
-        value: /  # Base directory on FTP server
+        value: users/opg_bizonylatok  # Base directory: users/opg_bizonylatok/{ap_number}/{year}
 
       # Python configuration
       - key: PYTHON_VERSION
