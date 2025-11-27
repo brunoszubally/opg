@@ -8,3 +8,6 @@ Flask>=3.0.0
 
 # Production WSGI server
 gunicorn>=21.2.0
+
+# SFTP client (for uploading XML files)
+paramiko>=3.4.0

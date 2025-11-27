@@ -34,6 +34,7 @@ load_env()
 # Import NAV API functions from opg.py
 import opg
 from adalo_client import AdaloClient
+from sftp_uploader import upload_files_to_sftp
 
 
 def get_nav_status(ap_number: str, credentials: Dict) -> Optional[Dict]:
@@ -415,6 +416,40 @@ def sync_user(user: Dict, adalo_client: AdaloClient, current_year: int = None) -
                 )
                 revenues_created += 1
 
+            # Upload XML files to SFTP (optional, only if configured)
+            sftp_result = None
+            sftp_host = os.getenv('SFTP_HOST')
+            sftp_user = os.getenv('SFTP_USER')
+            sftp_password = os.getenv('SFTP_PASSWORD')
+
+            if all([sftp_host, sftp_user, sftp_password]):
+                print(f"  Uploading {len(xml_files)} XML files to SFTP...")
+                try:
+                    sftp_port = int(os.getenv('SFTP_PORT', '22'))
+                    sftp_base_path = os.getenv('SFTP_BASE_PATH', '/')
+
+                    sftp_result = upload_files_to_sftp(
+                        xml_files=xml_files,
+                        ap_number=ap_number,
+                        year=current_year,
+                        sftp_host=sftp_host,
+                        sftp_user=sftp_user,
+                        sftp_password=sftp_password,
+                        sftp_port=sftp_port,
+                        sftp_base_path=sftp_base_path
+                    )
+
+                    if sftp_result['success']:
+                        print(f"  SFTP upload successful: {sftp_result['uploaded']} files")
+                    else:
+                        print(f"  SFTP upload partial: {sftp_result['uploaded']} succeeded, {sftp_result['failed']} failed")
+
+                except Exception as e:
+                    print(f"  SFTP upload error: {e}")
+                    sftp_result = {'success': False, 'uploaded': 0, 'failed': len(xml_files), 'error': str(e)}
+            else:
+                print(f"  SFTP upload skipped (not configured)")
+
             # Update user sync status
             now_iso = datetime.now(timezone.utc).isoformat()
             adalo_client.update_user_sync(
@@ -424,11 +459,21 @@ def sync_user(user: Dict, adalo_client: AdaloClient, current_year: int = None) -
             )
 
             files_synced = end_file - start_file + 1
+
+            # Build result message
+            message = f'Synced {files_synced} files, created {revenues_created} daily revenue records'
+            if sftp_result:
+                if sftp_result['success']:
+                    message += f', uploaded {sftp_result["uploaded"]} files to SFTP'
+                else:
+                    message += f', SFTP upload partial ({sftp_result["uploaded"]}/{len(xml_files)} files)'
+
             return {
                 'success': True,
-                'message': f'Synced {files_synced} files, created {revenues_created} daily revenue records',
+                'message': message,
                 'files_synced': files_synced,
-                'revenues_created': revenues_created
+                'revenues_created': revenues_created,
+                'sftp_uploaded': sftp_result['uploaded'] if sftp_result else None
             }
 
     except Exception as e:
