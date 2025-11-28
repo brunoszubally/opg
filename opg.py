@@ -387,7 +387,7 @@ def main():
             target = out_dir / (z.stem + "_unzipped")
             files = unzip_all(z, target)
             for f in files:
-                if f.suffix == '.p7b':
+                if f.suffix.lower() == '.p7b':
                     p7b_files.append(f)
                     if debug:
                         print(f"  • {f.name}")
@@ -445,7 +445,7 @@ def main():
             target = out_dir / (z.stem + "_unzipped")
             files = unzip_all(z, target)
             for f in files:
-                if f.suffix == '.p7b':
+                if f.suffix.lower() == '.p7b':
                     p7b_files.append(f)
 
         print(f"✓ Kibontva {len(p7b_files)} P7B fájl")
