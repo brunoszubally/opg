@@ -207,6 +207,10 @@ class FTPUploader:
             return result
 
         try:
+            # Save initial directory
+            initial_dir = self.ftp.pwd()
+            print(f"  Initial FTP directory: {initial_dir}")
+
             # Remote directory: ap_number/year (relative to base_path)
             remote_dir = f"{ap_number}/{year}"
             full_path = f"{self.base_path}/{remote_dir}".replace('//', '/')
@@ -215,6 +219,9 @@ class FTPUploader:
 
             # Upload each file
             for xml_file in xml_files:
+                # Reset to initial directory before each upload
+                self.ftp.cwd(initial_dir)
+
                 if self.upload_file(xml_file, remote_dir, xml_file.name):
                     result['uploaded'] += 1
                     result['files'].append(xml_file.name)
