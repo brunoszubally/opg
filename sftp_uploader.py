@@ -211,21 +211,38 @@ class FTPUploader:
             initial_dir = self.ftp.pwd()
             print(f"  Initial FTP directory: {initial_dir}")
 
-            # Remote directory: ap_number/year (relative to base_path)
-            remote_dir = f"{ap_number}/{year}"
-            full_path = f"{self.base_path}/{remote_dir}".replace('//', '/')
+            # Build full target path
+            full_target_path = f"{self.base_path}/{ap_number}/{year}"
+            print(f"  Target directory: {full_target_path}")
 
-            print(f"  Uploading {len(xml_files)} XML files to {full_path}...")
+            # Navigate to initial directory
+            self.ftp.cwd(initial_dir)
+
+            # Create and navigate to target directory ONCE
+            if not self._ensure_directory(full_target_path):
+                print(f"  Failed to create target directory: {full_target_path}")
+                return result
+
+            # Save the target directory path
+            target_dir = self.ftp.pwd()
+            print(f"  Successfully navigated to: {target_dir}")
 
             # Upload each file
             for xml_file in xml_files:
-                # Reset to initial directory before each upload
-                self.ftp.cwd(initial_dir)
+                try:
+                    # Navigate to target directory
+                    self.ftp.cwd(target_dir)
 
-                if self.upload_file(xml_file, remote_dir, xml_file.name):
+                    # Upload file
+                    with open(xml_file, 'rb') as f:
+                        self.ftp.storbinary(f'STOR {xml_file.name}', f)
+
+                    print(f"  Uploaded: {xml_file.name}")
                     result['uploaded'] += 1
                     result['files'].append(xml_file.name)
-                else:
+
+                except Exception as e:
+                    print(f"  Failed to upload {xml_file.name}: {e}")
                     result['failed'] += 1
 
             result['success'] = result['failed'] == 0

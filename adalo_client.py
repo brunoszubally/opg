@@ -7,7 +7,7 @@ Wrapper for Adalo REST API to manage users and daily revenue records.
 import os
 import time
 from typing import List, Dict, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 
 
@@ -120,7 +120,7 @@ class AdaloClient:
             List of users that need syncing
         """
         all_users = self.get_all_users()
-        threshold_date = datetime.now() - timedelta(days=days_threshold)
+        threshold_date = datetime.now(timezone.utc) - timedelta(days=days_threshold)
         users_to_sync = []
 
         for user in all_users:
@@ -147,6 +147,13 @@ class AdaloClient:
                 # Parse ISO date string
                 try:
                     last_sync_dt = datetime.fromisoformat(last_sync.replace('Z', '+00:00'))
+
+                    # Skip if already synced today
+                    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                    if last_sync_dt >= today:
+                        # Already synced today, skip
+                        continue
+
                     if last_sync_dt < threshold_date:
                         users_to_sync.append(user)
                 except (ValueError, AttributeError):

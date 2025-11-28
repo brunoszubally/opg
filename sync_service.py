@@ -482,7 +482,7 @@ def sync_user(user: Dict, adalo_client: AdaloClient, current_year: int = None) -
 
 def sync_all_users(adalo_client: AdaloClient, days_threshold: int = 10, current_year: int = None) -> Dict:
     """
-    Sync all users that need syncing (10+ days since last sync).
+    Sync all users that need syncing (10+ days since last sync, not synced today).
 
     Args:
         adalo_client: AdaloClient instance
@@ -490,17 +490,26 @@ def sync_all_users(adalo_client: AdaloClient, days_threshold: int = 10, current_
         current_year: Year to filter by (defaults to current year)
 
     Returns:
-        Dict with overall sync results
+        Dict with overall sync results including skipped count
     """
     if current_year is None:
         current_year = datetime.now().year
 
+    # Get all OPG-enabled users with credentials
+    all_users = adalo_client.get_all_users()
+    eligible_users = [u for u in all_users if u.get("onlinepenztargep") and all([
+        u.get("navlogin"), u.get("navpassword"), u.get("signKey"),
+        u.get("taxNumber"), u.get("apnumber")
+    ])]
+
     users_to_sync = adalo_client.get_users_to_sync(days_threshold=days_threshold)
+    skipped_count = len(eligible_users) - len(users_to_sync)
 
     results = {
         'total_users': len(users_to_sync),
         'successful': 0,
         'failed': 0,
+        'skipped': skipped_count,
         'user_results': []
     }
 
