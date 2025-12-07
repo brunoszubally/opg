@@ -86,8 +86,8 @@ def sync_all():
     try:
         logger.info("=== SYNC ALL REQUEST STARTED ===")
 
-        # Parse request body
-        data = request.get_json() or {}
+        # Parse request body (silent=True to handle empty body)
+        data = request.get_json(silent=True) or {}
         days_threshold = data.get('days_threshold', 10)
         current_year = data.get('current_year', datetime.now().year)
 
@@ -148,8 +148,8 @@ def sync_single_user(user_id: int):
     try:
         logger.info(f"=== SYNC USER {user_id} REQUEST STARTED ===")
 
-        # Parse request body
-        data = request.get_json() or {}
+        # Parse request body (silent=True to handle empty body)
+        data = request.get_json(silent=True) or {}
         current_year = data.get('current_year', datetime.now().year)
 
         logger.info(f"Request params: user_id={user_id}, current_year={current_year}")
