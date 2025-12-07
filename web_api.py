@@ -1,10 +1,6 @@
-"""
-OPG Sync Web API
-
-Flask web service providing endpoints for automatic and manual OPG sync.
-"""
-
 import os
+import logging
+import traceback
 from datetime import datetime
 from flask import Flask, jsonify, request
 from functools import wraps
@@ -12,6 +8,13 @@ from functools import wraps
 from adalo_client import create_client_from_env
 from sync_service import sync_all_users, sync_user
 
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -81,16 +84,24 @@ def sync_all():
         500 Error if sync fails
     """
     try:
+        logger.info("=== SYNC ALL REQUEST STARTED ===")
+
         # Parse request body
         data = request.get_json() or {}
         days_threshold = data.get('days_threshold', 10)
         current_year = data.get('current_year', datetime.now().year)
 
+        logger.info(f"Request params: days_threshold={days_threshold}, current_year={current_year}")
+
         # Create Adalo client
+        logger.info("Creating Adalo client from environment...")
         adalo_client = create_client_from_env()
+        logger.info("Adalo client created successfully")
 
         # Run sync
+        logger.info("Starting sync_all_users...")
         results = sync_all_users(adalo_client, days_threshold=days_threshold, current_year=current_year)
+        logger.info(f"Sync completed successfully: {results}")
 
         return jsonify({
             'success': True,
@@ -99,6 +110,10 @@ def sync_all():
         }), 200
 
     except Exception as e:
+        logger.error(f"=== SYNC ALL ERROR ===")
+        logger.error(f"Error: {str(e)}")
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
+
         return jsonify({
             'success': False,
             'error': str(e),
@@ -131,17 +146,28 @@ def sync_single_user(user_id: int):
         500 Error if sync fails
     """
     try:
+        logger.info(f"=== SYNC USER {user_id} REQUEST STARTED ===")
+
         # Parse request body
         data = request.get_json() or {}
         current_year = data.get('current_year', datetime.now().year)
 
+        logger.info(f"Request params: user_id={user_id}, current_year={current_year}")
+
         # Create Adalo client
+        logger.info("Creating Adalo client from environment...")
         adalo_client = create_client_from_env()
+        logger.info("Adalo client created successfully")
 
         # Get user
         try:
+            logger.info(f"Fetching user {user_id} from Adalo...")
             user = adalo_client.get_user_by_id(user_id)
+            logger.info(f"User fetched: {user.get('first_name')} ({user.get('Email')})")
+            logger.info(f"User credentials present: navlogin={bool(user.get('navlogin'))}, navpassword={bool(user.get('navpassword'))}, signKey={bool(user.get('signKey'))}, taxNumber={bool(user.get('taxNumber'))}, apnumber={user.get('apnumber')}")
         except Exception as e:
+            logger.error(f"Failed to fetch user {user_id}: {str(e)}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
             return jsonify({
                 'success': False,
                 'error': f'User not found: {str(e)}',
@@ -149,7 +175,9 @@ def sync_single_user(user_id: int):
             }), 404
 
         # Run sync
+        logger.info(f"Starting sync for user {user_id}...")
         result = sync_user(user, adalo_client, current_year=current_year)
+        logger.info(f"Sync result: {result}")
 
         status_code = 200 if result['success'] else 500
 
@@ -162,6 +190,10 @@ def sync_single_user(user_id: int):
         }), status_code
 
     except Exception as e:
+        logger.error(f"=== SYNC USER {user_id} ERROR ===")
+        logger.error(f"Error: {str(e)}")
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
+
         return jsonify({
             'success': False,
             'error': str(e),
