@@ -15,9 +15,25 @@ from nav_online_invoice import (
 from online_invoice_api import (
     query_all_invoices_paginated,
     calculate_summary,
-    HUNGARIAN_MONTHS,
-    ENGLISH_MONTHS
+    HUNGARIAN_MONTHS
 )
+
+# Adalo field names (shortened month names)
+# Note: 'nov' + 'invoices' = 'novinvoices' BUT there's a typo in Adalo: 'novincoices'
+ADALO_MONTH_NAMES = {
+    1: 'jan',
+    2: 'febr',
+    3: 'marc',
+    4: 'april',
+    5: 'maj',
+    6: 'jun',
+    7: 'july',
+    8: 'aug',
+    9: 'sept',
+    10: 'oct',
+    11: 'nov',  # Special case: 'novincoices' (typo in Adalo)
+    12: 'dec'
+}
 from adalo_client import AdaloClient
 
 logger = logging.getLogger(__name__)
@@ -102,8 +118,8 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
                 last_day = calendar.monthrange(year, month)[1]
                 date_to = f"{year}-{month:02d}-{last_day:02d}"
 
-            month_name = ENGLISH_MONTHS[month]
-            logger.info(f"  Querying {month_name} ({date_from} to {date_to})...")
+            adalo_month_name = ADALO_MONTH_NAMES[month]
+            logger.info(f"  Querying month {month} ({date_from} to {date_to})...")
 
             try:
                 invoice_query_params = {
@@ -121,22 +137,34 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
                 # Calculate KATA percentage for this month
                 monthly_kata_percent = (monthly_summary['netAmount'] / KATA_MONTHLY_LIMIT) * 100
 
-                # Update monthly fields
-                update_data[f'{month_name}net'] = monthly_summary['netAmount']
-                update_data[f'{month_name}invoices'] = monthly_summary['totalInvoices']
-                update_data[f'{month_name}katapercent'] = monthly_kata_percent
+                # Update monthly fields (using Adalo field names)
+                update_data[f'{adalo_month_name}net'] = monthly_summary['netAmount']
+
+                # Special case: November has typo in Adalo field name
+                if month == 11:
+                    update_data['novincoices'] = monthly_summary['totalInvoices']  # Typo in Adalo!
+                else:
+                    update_data[f'{adalo_month_name}invoices'] = monthly_summary['totalInvoices']
+
+                update_data[f'{adalo_month_name}katapercent'] = monthly_kata_percent
 
                 total_invoices += monthly_summary['totalInvoices']
                 total_net += monthly_summary['netAmount']
 
-                logger.info(f"    {month_name}: {monthly_summary['totalInvoices']} invoices, {monthly_summary['netAmount']} Ft, KATA: {monthly_kata_percent:.2f}%")
+                logger.info(f"    Month {month} ({adalo_month_name}): {monthly_summary['totalInvoices']} invoices, {monthly_summary['netAmount']} Ft, KATA: {monthly_kata_percent:.2f}%")
 
             except Exception as ex:
-                logger.error(f"  Error querying {month_name}: {str(ex)}")
+                logger.error(f"  Error querying month {month}: {str(ex)}")
                 # Set to 0 on error
-                update_data[f'{month_name}net'] = 0.0
-                update_data[f'{month_name}invoices'] = 0
-                update_data[f'{month_name}katapercent'] = 0.0
+                update_data[f'{adalo_month_name}net'] = 0.0
+
+                # Special case: November has typo in Adalo field name
+                if month == 11:
+                    update_data['novincoices'] = 0  # Typo in Adalo!
+                else:
+                    update_data[f'{adalo_month_name}invoices'] = 0
+
+                update_data[f'{adalo_month_name}katapercent'] = 0.0
 
         # Calculate total KATA percentage
         total_kata_percent = (total_net / KATA_YEARLY_LIMIT) * 100
@@ -148,10 +176,10 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
 
         # Update current month info
         current_month = datetime.now().month
-        current_month_name = HUNGARIAN_MONTHS[current_month]
-        current_month_key = ENGLISH_MONTHS[current_month]
-        update_data['currentMonth_name'] = current_month_name
-        update_data['currentMonth_amount'] = update_data.get(f'{current_month_key}net', 0.0)
+        current_month_name_hu = HUNGARIAN_MONTHS[current_month]
+        current_month_adalo = ADALO_MONTH_NAMES[current_month]
+        update_data['currentMonth_name'] = current_month_name_hu
+        update_data['currentMonth_amount'] = update_data.get(f'{current_month_adalo}net', 0.0)
 
         # Update user record in Adalo
         logger.info(f"Updating user {user_id} with Online Invoice data...")
