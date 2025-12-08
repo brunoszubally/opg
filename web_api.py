@@ -7,6 +7,7 @@ from functools import wraps
 
 from adalo_client import create_client_from_env
 from sync_service import sync_all_users, sync_user
+from online_invoice_api import handle_online_invoice_query
 
 
 # Configure logging
@@ -243,6 +244,40 @@ def get_status():
             'error': str(e),
             'timestamp': datetime.now().isoformat()
         }), 500
+
+
+@app.route('/api/online-invoice/query', methods=['GET', 'POST'])
+def online_invoice_query():
+    """
+    Query NAV Online Invoice data
+
+    This endpoint provides access to NAV Online Invoice (OSZ) system.
+    Supports three modes:
+    1. Normal: Return all invoices (invoices list)
+    2. Summary: Monthly aggregation (summary object with totals)
+    3. Yearly: 12-month aggregation (yearlySummary object)
+
+    Authentication:
+        X-API-Key header or apiKey query parameter
+
+    Parameters (POST JSON or GET query):
+        login (required): NAV technical user login
+        password (required): NAV technical user password
+        taxNumber (required): Tax number (8 digits, HU prefix optional)
+        signKey (required): Signature key
+        exchangeKey (required): Exchange key
+        dateFrom (required): Start date (YYYY-MM-DD)
+        dateTo (required): End date (YYYY-MM-DD)
+        summary (optional): "true" for monthly summary
+        yearly (optional): "true" for yearly summary (12 months)
+
+    Returns:
+        200 OK with invoice data
+        400 Bad Request if parameters are missing or invalid
+        401 Unauthorized if API key is invalid
+        500 Error if NAV query fails
+    """
+    return handle_online_invoice_query()
 
 
 @app.errorhandler(404)
