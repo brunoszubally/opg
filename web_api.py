@@ -8,6 +8,7 @@ from functools import wraps
 from adalo_client import create_client_from_env
 from sync_service import sync_all_users, sync_user
 from online_invoice_api import handle_online_invoice_query
+from online_invoice_sync_service import sync_online_invoice_for_user
 
 
 # Configure logging
@@ -239,6 +240,127 @@ def get_status():
         }), 200
 
     except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+
+@app.route('/api/full-sync/<int:user_id>', methods=['POST'])
+@require_api_key
+def full_sync(user_id: int):
+    """
+    Full sync: Sync both OPG and Online Invoice data for a user
+
+    This endpoint syncs:
+    1. OPG cash register data -> Adalo revenues collection
+    2. Online Invoice data -> Adalo user record (monthly aggregations)
+
+    Headers:
+        Authorization: Bearer {api_key}
+
+    URL Parameters:
+        user_id: User ID in Adalo database
+
+    Request body (optional JSON):
+        {
+            "current_year": 2025  # Optional, defaults to current year
+        }
+
+    Returns:
+        200 OK with combined sync results
+        404 Not Found if user doesn't exist
+        500 Error if sync fails
+    """
+    try:
+        logger.info(f"=== FULL SYNC REQUEST FOR USER {user_id} ===")
+
+        # Parse request body
+        data = request.get_json(silent=True) or {}
+        current_year = data.get('current_year', datetime.now().year)
+
+        logger.info(f"Request params: user_id={user_id}, current_year={current_year}")
+
+        # Create Adalo client
+        logger.info("Creating Adalo client from environment...")
+        adalo_client = create_client_from_env()
+        logger.info("Adalo client created successfully")
+
+        # Get user
+        try:
+            logger.info(f"Fetching user {user_id} from Adalo...")
+            user = adalo_client.get_user_by_id(user_id)
+            logger.info(f"User fetched: {user.get('first_name')} ({user.get('Email')})")
+        except Exception as e:
+            logger.error(f"Failed to fetch user {user_id}: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': f'User not found: {str(e)}',
+                'timestamp': datetime.now().isoformat()
+            }), 404
+
+        results = {
+            'user_id': user_id,
+            'user_name': user.get('first_name'),
+            'user_email': user.get('Email'),
+            'timestamp': datetime.now().isoformat()
+        }
+
+        # 1. Sync OPG (if user has OPG credentials)
+        has_opg = user.get('apnumber') and user.get('navlogin') and user.get('navpassword')
+        if has_opg:
+            logger.info(f"User has OPG credentials, starting OPG sync...")
+            opg_result = sync_user(user, adalo_client, current_year=current_year)
+            results['opg_sync'] = opg_result
+            logger.info(f"OPG sync result: {opg_result}")
+        else:
+            logger.info("User does not have OPG credentials, skipping OPG sync")
+            results['opg_sync'] = {
+                'success': False,
+                'message': 'No OPG credentials',
+                'skipped': True
+            }
+
+        # 2. Sync Online Invoice (if user has Online Invoice credentials)
+        has_online_invoice = all([
+            user.get('navlogin'),
+            user.get('navpassword'),
+            user.get('signKey'),
+            user.get('exchangeKey'),
+            user.get('taxNumber')
+        ])
+
+        if has_online_invoice:
+            logger.info(f"User has Online Invoice credentials, starting Online Invoice sync...")
+            online_invoice_result = sync_online_invoice_for_user(user, adalo_client, year=current_year)
+            results['online_invoice_sync'] = online_invoice_result
+            logger.info(f"Online Invoice sync result: {online_invoice_result}")
+        else:
+            logger.info("User does not have Online Invoice credentials, skipping Online Invoice sync")
+            results['online_invoice_sync'] = {
+                'success': False,
+                'message': 'No Online Invoice credentials',
+                'skipped': True
+            }
+
+        # Determine overall success
+        opg_success = results['opg_sync'].get('success') or results['opg_sync'].get('skipped')
+        invoice_success = results['online_invoice_sync'].get('success') or results['online_invoice_sync'].get('skipped')
+
+        overall_success = opg_success and invoice_success
+        status_code = 200 if overall_success else 500
+
+        results['success'] = overall_success
+
+        logger.info(f"Full sync completed with overall success: {overall_success}")
+        return jsonify(results), status_code
+
+    except Exception as e:
+        logger.error(f"=== FULL SYNC ERROR FOR USER {user_id} ===")
+        logger.error(f"Error: {str(e)}")
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
+
         return jsonify({
             'success': False,
             'error': str(e),

@@ -225,6 +225,20 @@ class AdaloClient:
         url = f"{self._get_collection_url(self.users_collection_id)}/{user_id}"
         return self._request("GET", url)
 
+    def update_user_online_invoice_data(self, user_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update user's Online Invoice monthly aggregation data
+
+        Args:
+            user_id: User ID
+            data: Dict with monthly fields (jannet, febrinvoices, etc.) and totals
+
+        Returns:
+            Updated user record
+        """
+        url = f"{self._get_collection_url(self.users_collection_id)}/{user_id}"
+        return self._request("PUT", url, json=data)
+
 
 def create_client_from_env() -> AdaloClient:
     """
