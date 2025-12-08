@@ -220,8 +220,8 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
 
                 update_data[f'{adalo_month_name}katapercent'] = 0.0
 
-        # Calculate total KATA percentage
-        total_kata_percent = (total_net / KATA_YEARLY_LIMIT) * 100
+        # Calculate total KATA percentage (using prorated yearly limit if applicable)
+        total_kata_percent = (total_net / kata_yearly_limit) * 100
 
         # Update totals
         update_data['totalnet'] = total_net
