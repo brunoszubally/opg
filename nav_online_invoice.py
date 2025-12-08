@@ -127,19 +127,33 @@ class NavOnlineInvoiceReporter:
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S%f')[:-3]  # milliseconds
         return f"RID{timestamp}{uuid.uuid4().hex[:10]}"
 
+    def _get_timestamp(self) -> str:
+        """
+        Get current timestamp in NAV format with milliseconds
+        Format: YYYY-MM-DDTHH:MM:SS.sssZ (UTC)
+        """
+        now = datetime.utcnow()
+        millis = now.microsecond // 1000
+        return f"{now.strftime('%Y-%m-%dT%H:%M:%S')}.{millis:03d}Z"
+
     def _create_request_signature(self, request_id: str, timestamp: str) -> str:
         """
-        Create request signature using SHA512 HMAC
+        Create request signature using SHA3-512
 
         Args:
             request_id: Unique request identifier
-            timestamp: ISO 8601 timestamp
+            timestamp: NAV timestamp with milliseconds
 
         Returns:
-            Base64 encoded signature
+            Hex encoded signature (uppercase)
         """
-        # Concatenate: requestId + timestamp + signKey
-        data = f"{request_id}{timestamp}{self.config.user['signKey']}"
+        # Remove milliseconds and non-digits from timestamp for signature
+        # Format: yyyyMMddHHmmss (14 digits)
+        import re
+        timestamp_clean = re.sub(r'\.\d{3}|\D+', '', timestamp)
+
+        # Concatenate: requestId + timestamp (without millis) + signKey
+        data = f"{request_id}{timestamp_clean}{self.config.user['signKey']}"
 
         # SHA3-512 hash
         hash_obj = hashlib.sha3_512(data.encode('utf-8'))
@@ -164,15 +178,19 @@ class NavOnlineInvoiceReporter:
 
         ET.SubElement(user, 'login').text = self.config.user['login']
 
-        # Password hash: SHA512(password)
+        # Password hash: SHA-512(password)
         password_hash = hashlib.sha512(self.config.user['password'].encode('utf-8')).hexdigest().upper()
-        ET.SubElement(user, 'passwordHash').text = password_hash
+        password_hash_elem = ET.SubElement(user, 'passwordHash')
+        password_hash_elem.text = password_hash
+        password_hash_elem.set('cryptoType', 'SHA-512')
 
         ET.SubElement(user, 'taxNumber').text = self.config.user['taxNumber']
 
-        # Request signature
+        # Request signature (SHA3-512)
         signature = self._create_request_signature(request_id, timestamp)
-        ET.SubElement(user, 'requestSignature').text = signature
+        signature_elem = ET.SubElement(user, 'requestSignature')
+        signature_elem.text = signature
+        signature_elem.set('cryptoType', 'SHA3-512')
 
         return user
 
@@ -216,17 +234,31 @@ class NavOnlineInvoiceReporter:
                 }
         """
         request_id = self._generate_request_id()
-        timestamp = datetime.utcnow().isoformat(timespec='seconds') + 'Z'
+        timestamp = self._get_timestamp()
 
-        # Build XML request
-        root = ET.Element('QueryInvoiceDigestRequest', {
-            'xmlns': 'http://schemas.nav.gov.hu/OSA/3.0/api'
-        })
+        # Build XML request with proper namespaces
+        # Root element
+        root = ET.Element('QueryInvoiceDigestRequest')
+        root.set('xmlns', 'http://schemas.nav.gov.hu/OSA/3.0/api')
+        root.set('xmlns:common', 'http://schemas.nav.gov.hu/NTCA/1.0/common')
 
-        # Add common elements
-        root.append(self._build_common_header(request_id, timestamp))
-        root.append(self._build_user_element(request_id, timestamp))
-        root.append(self._build_software_element())
+        # Add common elements (with common: namespace prefix)
+        header = self._build_common_header(request_id, timestamp)
+        # Re-register all children with common namespace
+        for child in header:
+            child.tag = f'{{http://schemas.nav.gov.hu/NTCA/1.0/common}}{child.tag}'
+        header.tag = '{http://schemas.nav.gov.hu/NTCA/1.0/common}header'
+        root.append(header)
+
+        user = self._build_user_element(request_id, timestamp)
+        # Re-register all children with common namespace
+        for child in user:
+            child.tag = f'{{http://schemas.nav.gov.hu/NTCA/1.0/common}}{child.tag}'
+        user.tag = '{http://schemas.nav.gov.hu/NTCA/1.0/common}user'
+        root.append(user)
+
+        software = self._build_software_element()
+        root.append(software)
 
         # Add page
         ET.SubElement(root, 'page').text = str(page)
