@@ -239,6 +239,49 @@ class AdaloClient:
         url = f"{self._get_collection_url(self.users_collection_id)}/{user_id}"
         return self._request("PUT", url, json=data)
 
+    def get_all_revenues_for_user(self, user_id: int, year: int = None) -> List[Dict[str, Any]]:
+        """
+        Get all OPG revenues for a specific user (optionally filtered by year)
+
+        Args:
+            user_id: User ID
+            year: Optional year filter
+
+        Returns:
+            List of revenue records
+        """
+        url = self._get_collection_url(self.revenues_collection_id)
+        offset = 0
+        limit = 100
+        all_revenues = []
+
+        while True:
+            params = {"offset": offset, "limit": limit}
+            data = self._request("GET", url, params=params)
+
+            records = data.get("records", [])
+            if not records:
+                break
+
+            # Filter by user_id
+            for record in records:
+                if record.get('user_opginvoice') == user_id:
+                    # Optional: filter by year
+                    if year:
+                        revenue_date = record.get('fajldatuma')
+                        if revenue_date and revenue_date.startswith(str(year)):
+                            all_revenues.append(record)
+                    else:
+                        all_revenues.append(record)
+
+            offset += len(records)
+
+            # If we got fewer records than limit, we're done
+            if len(records) < limit:
+                break
+
+        return all_revenues
+
 
 def create_client_from_env() -> AdaloClient:
     """

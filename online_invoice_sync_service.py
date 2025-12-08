@@ -138,7 +138,32 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
         }
 
         total_invoices = 0
-        total_net = 0.0
+        total_online_invoice_net = 0.0
+
+        # Get existing OPG revenues for this user and year
+        opg_monthly_revenues = {}
+        try:
+            logger.info(f"Fetching existing OPG revenues for user {user_id} in year {year}...")
+            # Query revenues collection for this user's OPG data
+            # This assumes revenues have been synced by OPG sync
+            revenues = adalo_client.get_all_revenues_for_user(user_id, year)
+
+            # Aggregate OPG revenues by month
+            for revenue in revenues:
+                revenue_date = revenue.get('fajldatuma')  # YYYY-MM-DD format
+                if revenue_date:
+                    try:
+                        rev_month = int(revenue_date.split('-')[1])
+                        rev_amount = float(revenue.get('bizonylatsummary', 0))
+                        if rev_month not in opg_monthly_revenues:
+                            opg_monthly_revenues[rev_month] = 0.0
+                        opg_monthly_revenues[rev_month] += rev_amount
+                    except:
+                        pass
+
+            logger.info(f"Found OPG revenues for months: {list(opg_monthly_revenues.keys())}")
+        except Exception as ex:
+            logger.warning(f"Could not fetch OPG revenues: {ex}, continuing without OPG data")
 
         # Query each month
         for month in range(1, 13):
@@ -167,6 +192,12 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
                 monthly_invoices = query_all_invoices_paginated(reporter, invoice_query_params)
                 monthly_summary = calculate_summary(monthly_invoices, year)
 
+                # Get OPG revenue for this month
+                opg_monthly_revenue = opg_monthly_revenues.get(month, 0.0)
+
+                # Total monthly revenue (OPG + Online Invoice)
+                monthly_total_revenue = monthly_summary['netAmount'] + opg_monthly_revenue
+
                 # Calculate monthly KATA limit (prorated if started mid-year)
                 monthly_kata_limit = BASE_KATA_MONTHLY_LIMIT
 
@@ -185,9 +216,9 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
                         monthly_kata_limit = (days_worked / days_in_month) * BASE_KATA_MONTHLY_LIMIT
                         logger.info(f"    First month proration: {days_worked}/{days_in_month} days = {monthly_kata_limit:.2f} Ft limit")
 
-                # Calculate KATA percentage for this month
+                # Calculate KATA percentage for this month (based on OPG + Online Invoice total)
                 if monthly_kata_limit > 0:
-                    monthly_kata_percent = (monthly_summary['netAmount'] / monthly_kata_limit) * 100
+                    monthly_kata_percent = (monthly_total_revenue / monthly_kata_limit) * 100
                 else:
                     monthly_kata_percent = 0.0
 
@@ -203,9 +234,9 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
                 update_data[f'{adalo_month_name}katapercent'] = monthly_kata_percent
 
                 total_invoices += monthly_summary['totalInvoices']
-                total_net += monthly_summary['netAmount']
+                total_online_invoice_net += monthly_summary['netAmount']
 
-                logger.info(f"    Month {month} ({adalo_month_name}): {monthly_summary['totalInvoices']} invoices, {monthly_summary['netAmount']} Ft, KATA: {monthly_kata_percent:.2f}%")
+                logger.info(f"    Month {month} ({adalo_month_name}): Online Invoice: {monthly_summary['netAmount']} Ft, OPG: {opg_monthly_revenue} Ft, Total: {monthly_total_revenue} Ft, KATA: {monthly_kata_percent:.2f}%")
 
             except Exception as ex:
                 logger.error(f"  Error querying month {month}: {str(ex)}")
@@ -220,11 +251,18 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
 
                 update_data[f'{adalo_month_name}katapercent'] = 0.0
 
-        # Calculate total KATA percentage (using prorated yearly limit if applicable)
-        total_kata_percent = (total_net / kata_yearly_limit) * 100
+        # Calculate total revenue (OPG + Online Invoice)
+        total_opg_revenue = sum(opg_monthly_revenues.values())
+        total_combined_revenue = total_online_invoice_net + total_opg_revenue
 
-        # Update totals
-        update_data['totalnet'] = total_net
+        # Calculate total KATA percentage (using prorated yearly limit if applicable, based on combined revenue)
+        total_kata_percent = (total_combined_revenue / kata_yearly_limit) * 100
+
+        logger.info(f"Total combined revenue: Online Invoice: {total_online_invoice_net} Ft + OPG: {total_opg_revenue} Ft = {total_combined_revenue} Ft")
+        logger.info(f"Total KATA: {total_kata_percent:.2f}% (based on {kata_yearly_limit:.2f} Ft limit)")
+
+        # Update totals (totalnet = Online Invoice only for backwards compatibility)
+        update_data['totalnet'] = total_online_invoice_net
         update_data['allinvoices'] = total_invoices
         update_data['totalkatapercent'] = total_kata_percent
 
@@ -242,9 +280,11 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
 
         return {
             'success': True,
-            'message': f'Synced {total_invoices} invoices, total net: {total_net} Ft, KATA: {total_kata_percent:.2f}%',
+            'message': f'Synced {total_invoices} online invoices ({total_online_invoice_net} Ft) + OPG ({total_opg_revenue} Ft) = Total: {total_combined_revenue} Ft, KATA: {total_kata_percent:.2f}%',
             'total_invoices': total_invoices,
-            'total_net': total_net,
+            'online_invoice_net': total_online_invoice_net,
+            'opg_net': total_opg_revenue,
+            'combined_net': total_combined_revenue,
             'total_kata_percent': total_kata_percent
         }
 
