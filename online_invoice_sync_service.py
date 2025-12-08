@@ -79,6 +79,10 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
         config = NavOnlineInvoiceConfig(NavOnlineInvoiceConfig.PROD_URL, user_data, software_data)
         reporter = NavOnlineInvoiceReporter(config)
 
+        # KATA limits (2025)
+        KATA_YEARLY_LIMIT = 18000000.0  # 18M Ft/year
+        KATA_MONTHLY_LIMIT = KATA_YEARLY_LIMIT / 12  # 1.5M Ft/month
+
         # Prepare update data
         update_data = {
             'lastupdate': datetime.utcnow().isoformat() + 'Z'
@@ -114,24 +118,33 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
                 monthly_invoices = query_all_invoices_paginated(reporter, invoice_query_params)
                 monthly_summary = calculate_summary(monthly_invoices, year)
 
+                # Calculate KATA percentage for this month
+                monthly_kata_percent = (monthly_summary['netAmount'] / KATA_MONTHLY_LIMIT) * 100
+
                 # Update monthly fields
                 update_data[f'{month_name}net'] = monthly_summary['netAmount']
                 update_data[f'{month_name}invoices'] = monthly_summary['totalInvoices']
+                update_data[f'{month_name}katapercent'] = monthly_kata_percent
 
                 total_invoices += monthly_summary['totalInvoices']
                 total_net += monthly_summary['netAmount']
 
-                logger.info(f"    {month_name}: {monthly_summary['totalInvoices']} invoices, {monthly_summary['netAmount']} Ft")
+                logger.info(f"    {month_name}: {monthly_summary['totalInvoices']} invoices, {monthly_summary['netAmount']} Ft, KATA: {monthly_kata_percent:.2f}%")
 
             except Exception as ex:
                 logger.error(f"  Error querying {month_name}: {str(ex)}")
                 # Set to 0 on error
                 update_data[f'{month_name}net'] = 0.0
                 update_data[f'{month_name}invoices'] = 0
+                update_data[f'{month_name}katapercent'] = 0.0
+
+        # Calculate total KATA percentage
+        total_kata_percent = (total_net / KATA_YEARLY_LIMIT) * 100
 
         # Update totals
         update_data['totalnet'] = total_net
         update_data['allinvoices'] = total_invoices
+        update_data['totalkatapercent'] = total_kata_percent
 
         # Update current month info
         current_month = datetime.now().month
@@ -147,9 +160,10 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
 
         return {
             'success': True,
-            'message': f'Synced {total_invoices} invoices, total net: {total_net} Ft',
+            'message': f'Synced {total_invoices} invoices, total net: {total_net} Ft, KATA: {total_kata_percent:.2f}%',
             'total_invoices': total_invoices,
-            'total_net': total_net
+            'total_net': total_net,
+            'total_kata_percent': total_kata_percent
         }
 
     except Exception as ex:
