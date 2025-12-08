@@ -96,8 +96,41 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
         reporter = NavOnlineInvoiceReporter(config)
 
         # KATA limits (2025)
-        KATA_YEARLY_LIMIT = 18000000.0  # 18M Ft/year
-        KATA_MONTHLY_LIMIT = KATA_YEARLY_LIMIT / 12  # 1.5M Ft/month
+        BASE_KATA_YEARLY_LIMIT = 18000000.0  # 18M Ft/year
+        BASE_KATA_MONTHLY_LIMIT = BASE_KATA_YEARLY_LIMIT / 12  # 1.5M Ft/month
+
+        # Check if user started mid-year
+        started_mid_year = user.get('evkozbenkezdte', False)
+        start_date = None
+        kata_yearly_limit = BASE_KATA_YEARLY_LIMIT
+
+        if started_mid_year and user.get('evkozbenkezdtedatum'):
+            try:
+                # Parse start date
+                start_date_str = user.get('evkozbenkezdtedatum')
+                # Try different date formats
+                for fmt in ['%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%d', '%Y-%m-%dT%H:%M:%SZ']:
+                    try:
+                        start_date = datetime.strptime(start_date_str, fmt)
+                        break
+                    except:
+                        continue
+
+                if start_date:
+                    # Calculate remaining days in year
+                    year_end = datetime(year, 12, 31)
+                    days_remaining = (year_end - start_date).days + 1  # +1 to include start date
+                    days_in_year = 366 if year % 4 == 0 else 365  # Leap year check
+
+                    # Prorate yearly limit
+                    kata_yearly_limit = (days_remaining / days_in_year) * BASE_KATA_YEARLY_LIMIT
+
+                    logger.info(f"User started mid-year on {start_date.strftime('%Y-%m-%d')}")
+                    logger.info(f"Days remaining in year: {days_remaining}/{days_in_year}")
+                    logger.info(f"Prorated yearly KATA limit: {kata_yearly_limit:.2f} Ft")
+            except Exception as ex:
+                logger.warning(f"Could not parse start date: {ex}, using full year limits")
+                start_date = None
 
         # Prepare update data
         update_data = {
@@ -134,8 +167,29 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
                 monthly_invoices = query_all_invoices_paginated(reporter, invoice_query_params)
                 monthly_summary = calculate_summary(monthly_invoices, year)
 
+                # Calculate monthly KATA limit (prorated if started mid-year)
+                monthly_kata_limit = BASE_KATA_MONTHLY_LIMIT
+
+                if start_date and start_date.year == year:
+                    start_month = start_date.month
+                    start_day = start_date.day
+
+                    if month < start_month:
+                        # Before start month - no limit (should be 0 revenue)
+                        monthly_kata_limit = 0.0
+                    elif month == start_month:
+                        # First month - prorate by days
+                        import calendar
+                        days_in_month = calendar.monthrange(year, month)[1]
+                        days_worked = days_in_month - start_day + 1  # +1 to include start day
+                        monthly_kata_limit = (days_worked / days_in_month) * BASE_KATA_MONTHLY_LIMIT
+                        logger.info(f"    First month proration: {days_worked}/{days_in_month} days = {monthly_kata_limit:.2f} Ft limit")
+
                 # Calculate KATA percentage for this month
-                monthly_kata_percent = (monthly_summary['netAmount'] / KATA_MONTHLY_LIMIT) * 100
+                if monthly_kata_limit > 0:
+                    monthly_kata_percent = (monthly_summary['netAmount'] / monthly_kata_limit) * 100
+                else:
+                    monthly_kata_percent = 0.0
 
                 # Update monthly fields (using Adalo field names)
                 update_data[f'{adalo_month_name}net'] = monthly_summary['netAmount']
