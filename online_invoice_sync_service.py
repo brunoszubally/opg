@@ -265,6 +265,7 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
         update_data['totalnet'] = total_online_invoice_net
         update_data['allinvoices'] = total_invoices
         update_data['totalkatapercent'] = total_kata_percent
+        update_data['userkerete'] = kata_yearly_limit  # Full 18M or prorated limit
 
         # Update current month info
         current_month = datetime.now().month
