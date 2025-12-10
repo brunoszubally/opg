@@ -5,6 +5,7 @@ Syncs Online Invoice data to Adalo user records (monthly aggregations).
 """
 
 import logging
+import math
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -218,9 +219,9 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
 
                 # Calculate KATA percentage for this month (based on OPG + Online Invoice total)
                 if monthly_kata_limit > 0:
-                    monthly_kata_percent = (monthly_total_revenue / monthly_kata_limit) * 100
+                    monthly_kata_percent = math.ceil((monthly_total_revenue / monthly_kata_limit) * 100)
                 else:
-                    monthly_kata_percent = 0.0
+                    monthly_kata_percent = 0
 
                 # Update monthly fields (using Adalo field names)
                 update_data[f'{adalo_month_name}net'] = monthly_summary['netAmount']
@@ -236,7 +237,7 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
                 total_invoices += monthly_summary['totalInvoices']
                 total_online_invoice_net += monthly_summary['netAmount']
 
-                logger.info(f"    Month {month} ({adalo_month_name}): Online Invoice: {monthly_summary['netAmount']} Ft, OPG: {opg_monthly_revenue} Ft, Total: {monthly_total_revenue} Ft, KATA: {monthly_kata_percent:.2f}%")
+                logger.info(f"    Month {month} ({adalo_month_name}): Online Invoice: {monthly_summary['netAmount']} Ft, OPG: {opg_monthly_revenue} Ft, Total: {monthly_total_revenue} Ft, KATA: {monthly_kata_percent}%")
 
             except Exception as ex:
                 logger.error(f"  Error querying month {month}: {str(ex)}")
@@ -249,23 +250,23 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
                 else:
                     update_data[f'{adalo_month_name}invoices'] = 0
 
-                update_data[f'{adalo_month_name}katapercent'] = 0.0
+                update_data[f'{adalo_month_name}katapercent'] = 0
 
         # Calculate total revenue (OPG + Online Invoice)
         total_opg_revenue = sum(opg_monthly_revenues.values())
         total_combined_revenue = total_online_invoice_net + total_opg_revenue
 
         # Calculate total KATA percentage (using prorated yearly limit if applicable, based on combined revenue)
-        total_kata_percent = (total_combined_revenue / kata_yearly_limit) * 100
+        total_kata_percent = math.ceil((total_combined_revenue / kata_yearly_limit) * 100)
 
         logger.info(f"Total combined revenue: Online Invoice: {total_online_invoice_net} Ft + OPG: {total_opg_revenue} Ft = {total_combined_revenue} Ft")
-        logger.info(f"Total KATA: {total_kata_percent:.2f}% (based on {kata_yearly_limit:.2f} Ft limit)")
+        logger.info(f"Total KATA: {total_kata_percent}% (based on {kata_yearly_limit:.2f} Ft limit)")
 
         # Update totals (totalnet = Online Invoice only for backwards compatibility)
         update_data['totalnet'] = total_online_invoice_net
         update_data['allinvoices'] = total_invoices
         update_data['totalkatapercent'] = total_kata_percent
-        update_data['userkerete'] = kata_yearly_limit  # Full 18M or prorated limit
+        update_data['userkerete'] = int(kata_yearly_limit / 1000) * 1000  # Round down to nearest 1000
 
         # Update current month info
         current_month = datetime.now().month
@@ -281,7 +282,7 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
 
         return {
             'success': True,
-            'message': f'Synced {total_invoices} online invoices ({total_online_invoice_net} Ft) + OPG ({total_opg_revenue} Ft) = Total: {total_combined_revenue} Ft, KATA: {total_kata_percent:.2f}%',
+            'message': f'Synced {total_invoices} online invoices ({total_online_invoice_net} Ft) + OPG ({total_opg_revenue} Ft) = Total: {total_combined_revenue} Ft, KATA: {total_kata_percent}%',
             'total_invoices': total_invoices,
             'online_invoice_net': total_online_invoice_net,
             'opg_net': total_opg_revenue,
