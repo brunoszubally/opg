@@ -11,7 +11,8 @@ from typing import Dict, Any, Optional
 
 from nav_online_invoice import (
     NavOnlineInvoiceConfig,
-    NavOnlineInvoiceReporter
+    NavOnlineInvoiceReporter,
+    normalize_tax_number
 )
 from online_invoice_api import (
     query_all_invoices_paginated,
@@ -72,11 +73,23 @@ def sync_online_invoice_for_user(user: Dict[str, Any], adalo_client: AdaloClient
     try:
         logger.info(f"Starting Online Invoice sync for user {user_id} (tax number: {user.get('taxNumber')})")
 
+        # Normalize tax number to 8 digits
+        normalized_tax = normalize_tax_number(user['taxNumber'])
+        if not normalized_tax:
+            return {
+                'success': False,
+                'message': f'Invalid tax number format: {user.get("taxNumber")}',
+                'total_invoices': 0,
+                'total_net': 0.0
+            }
+
+        logger.info(f"Normalized tax number from {user['taxNumber']} to {normalized_tax}")
+
         # Build credentials
         user_data = {
             "login": user['navlogin'],
             "password": user['navpassword'],
-            "taxNumber": user['taxNumber'],
+            "taxNumber": normalized_tax,
             "signKey": user['signKey'],
             "exchangeKey": user['exchangeKey']
         }
