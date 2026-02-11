@@ -41,3 +41,20 @@ services:
       # Python configuration
       - key: PYTHON_VERSION
         value: 3.11
+
+  # Cron job - Daily automatic OPG sync
+  - type: cron
+    name: opg-daily-sync
+    env: python
+    region: frankfurt
+    plan: starter
+    schedule: "0 2 * * *"  # Daily at 02:00 UTC
+    buildCommand: pip install -r requirements.txt
+    startCommand: python cron_sync.py
+    envVars:
+      - key: API_KEY
+        sync: false  # Set via Render dashboard (must match web service API_KEY)
+      - key: WEB_SERVICE_URL
+        value: https://opg-sync-api.onrender.com
+      - key: PYTHON_VERSION
+        value: 3.11

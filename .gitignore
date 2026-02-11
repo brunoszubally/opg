@@ -34,6 +34,14 @@ test_sync_downloads/
 extracted_xml/
 extracted_xml.zip
 
+# Data files
+*.csv
+*.xlsx
+opg_temp/
+
+# PHP library (reference only, not used by Python app)
+osz/
+
 # Backup files
 *.backup
 opg.py.backup

@@ -1,563 +1,588 @@
-# NAV Online Pénztárgép (OPG) API Kliens és Sync Service
+# OPG Sync Service
 
-Python kliens és cloud-based sync service a NAV Online Pénztárgép API-hoz.
+NAV Online Penztargep (OPG) es Online Szamla szinkronizacios szolgaltatas.
+Adalo CMS-be szinkronizalja a felhasznalok NAV penztargep naplofajljait es online szamla adatait.
 
-## Két használati mód
+## Attekintes
 
-### 1. CLI Tool (Helyi használat)
-Parancssorból történő manuális letöltés és feldolgozás egyedi felhasználókhoz.
+Ez a szolgaltatas ket NAV rendszerbol gyujt adatokat es tarolja oket Adalo-ban:
 
-### 2. Cloud Sync Service (Multi-tenant SaaS)
-Render.com-on futó automatikus szinkronizáló service, Adalo adatbázis integrációval:
-- Multi-tenant: több user egyidejű kezelése
-- Automatikus napi szinkronizálás (10 napos threshold)
-- Manuális szinkronizálási végpont
-- Napi bevételek aggregálása és tárolása Adalo-ban
-- REST API endpoints
+1. **OPG (Online Penztargep)**: Penztargep naplofajlok letoltese, XML feldolgozas, napi bevetel aggregalas
+2. **Online Szamla (OSZ)**: Szamla adatok lekerdezese, havi osszesites, KATA szazalek szamitas
 
-## CLI Tool Funkciók
-
-- ✅ Pénztárgép státusz lekérdezése (elérhető fájlok száma)
-- ✅ Naplófájlok (.p7b) letöltése
-- ✅ Automatikus ZIP kicsomagolás
-- ✅ Hitelesítés SHA-512 és SHA3-512 hash-ekkel
-- ✅ SOAP 1.2 kommunikáció MTOM mellékletekkel
-
-## Cloud Sync Service Funkciók
-
-- ✅ Multi-tenant architektúra (user-specifikus NAV credentials)
-- ✅ Automatikus napi szinkronizálás (cron job)
-- ✅ Manuális szinkronizálás API végponton keresztül
-- ✅ Napi bevételek aggregálása (csak aktuális év, sikeres nyugták)
-- ✅ Adalo adatbázis integráció
-- ✅ REST API endpoints (health check, sync status)
-- ✅ API key alapú autentikáció
-
-## Telepítés
-
-```bash
-pip install requests
-```
-
-## Használat
-
-### 1. Státusz lekérdezése
-
-```bash
-python3 opg.py status --ap A29201112
-```
-
-**Kimenet:**
-```
-✓ Státusz lekérdezés sikeres
-  AP szám: A29201112
-  Utolsó kommunikáció: 2025-10-23T07:36:36Z
-  Utolsó fájl dátuma: 2025-10-24T00:00:00Z
-  Elérhető fájlok: 740 - 763 (24 db)
-```
-
-### 2. Naplófájlok letöltése
-
-```bash
-# Megadott tartomány letöltése
-python3 opg.py files --ap A29201112 --start 740 --end 763 --out ./downloads
-
-# Csak egy fájl letöltése
-python3 opg.py files --ap A29201112 --start 740 --end 740 --out ./downloads
-
-# Összes elérhető fájl letöltése (end nélkül)
-python3 opg.py files --ap A29201112 --start 740 --out ./downloads
-```
-
-**Kimenet:**
-```
-✓ Sikeresen letöltve 4 fájl
-  Mentve: downloads/
-  P7B fájlok: 4 db
-```
-
-### Debug mód
-
-Debug információk megjelenítéséhez add hozzá a `--debug` flaget:
-
-```bash
-python3 opg.py status --ap A29201112 --debug
-python3 opg.py files --ap A29201112 --start 740 --end 743 --out ./downloads --debug
-```
-
-Ez kiírja:
-- A teljes XML kérést
-- HTTP válasz headereket
-- Signature számítás részleteit
-- Nyers SOAP választ
-
-## Hitelesítési adatok beállítása
-
-A hitelesítési adatok az `opg.py` fájl elején találhatók:
-
-```python
-TECH_LOGIN      = "..."           # Technikai felhasználó login
-TECH_PASSWORD   = "..."           # Jelszó
-SIGNING_KEY     = "..."           # signKey (KÖTŐJELEKKEL!)
-EXCHANGE_KEY    = "..."           # exchangeKey (opcionális)
-TAX_NUMBER_8DIG = "..."           # Adószám első 8 számjegye
-AP_NUMBER       = "..."           # AP szám (pl. A29201112)
-```
-
-**FONTOS:** A `SIGNING_KEY`-t az eredeti formátumban kell megadni, **kötőjelekkel együtt**!
-
-## Fájl struktúra
-
-Letöltés után a fájlok a következő struktúrában jelennek meg:
-
-```
-downloads/
-├── attachment_0.zip                  # Letöltött ZIP
-├── attachment_0_unzipped/            # Kibontott mappa
-│   └── A29201112_77317012_20251009175837_740.p7b
-├── attachment_1.zip
-├── attachment_1_unzipped/
-│   └── A29201112_77317012_20251010010326_741.p7b
-...
-```
-
-A P7B fájlok aláírt PKCS#7 konténerek, amelyek tartalmazzák a pénztárgép naplóját.
-
-## P7B fájlok kinyerése
-
-Az `extract_p7b.py` script segítségével kinyerheted az XML tartalmat a P7B konténerekből:
-
-```bash
-# Egy fájl kinyerése
-python3 extract_p7b.py opg_downloads/attachment_0_unzipped/A29201112_77317012_20251009175837_740.p7b
-
-# Több fájl kinyerése wildcard-dal
-python3 extract_p7b.py opg_downloads/*/A*.p7b
-
-# Kimeneti mappa megadása
-python3 extract_p7b.py opg_downloads/*/A*.p7b --out-dir ./extracted_xml
-```
-
-**Kimenet:**
-```
-Feldolgozás: A29201112_77317012_20251009175837_740.p7b
-  ✓ Regex-alapú kinyerés sikeres
-  → Mentve: extracted_xml/A29201112_77317012_20251009175837_740.xml
-  Méret: 26,028 bytes, 113 sor
-
-============================================================
-✓ Sikeres: 1
-```
-
-### XML struktúra
-
-A kinyert XML fájlok a következő elemeket tartalmazzák:
-
-- **LON** - Log file indítás (fájl azonosítók, hash)
-- **INF** - Pénztárgép információk (típus, firmware, SIM kártya adatok, helyszín)
-- **STA** - Státusz információk (tárterület, akkumulátor, stb.)
-- **OPR** - Műveleti információk (adatforgalom, hálózat)
-- **POS** - GPS koordináták időbélyeggel
-- **NYN** - Nyugták/Bizonylatok (a tényleges eladási adatok!)
-- **EVT** - Események (kommunikáció a NAV szerverrel, hibaüzenetek)
-
-**Példa nyugta (NYN elem):**
-```xml
-<NYN>
-  <RSR>11</RSR>
-  <BSR>5669</BSR>
-  <DTS>2025-10-22T01:52:12+02:00</DTS>
-  <TSZ>77317012</TSZ>
-  <NSZ>0468/00002</NSZ>
-  <ITL>
-    <NA>VITELDÍJ</NA>
-    <PN>GY.05</PN>
-    <UN>4480</UN>
-    <QY>1,000</QY>
-    <SU>4480</SU>
-    <VC>E00</VC>
-  </ITL>
-  <RND>0</RND>
-  <SUM>4480</SUM>
-  ...
-</NYN>
-```
-
-## Parancsok összefoglalója
-
-```bash
-# Help
-python3 opg.py -h
-python3 opg.py status -h
-python3 opg.py files -h
-
-# Státusz
-python3 opg.py status --ap <AP_SZÁM> [--debug] [--use-exchange-key]
-
-# Fájlok
-python3 opg.py files --ap <AP_SZÁM> --start <SZÁM> [--end <SZÁM>] [--out <MAPPA>] [--debug]
-```
-
-## Gyakori problémák
-
-### INVALID_REQUEST_SIGNATURE
-
-Ha ezt a hibát kapod:
-- Ellenőrizd, hogy a `SIGNING_KEY` **kötőjelekkel** van-e megadva (pl. `0f-aac2-...`)
-- Próbáld meg az `EXCHANGE_KEY`-t használni: `--use-exchange-key`
-- Ellenőrizd, hogy a kulcsok érvényesek és aktívak a NAV portálon
-
-### HTTP 403
-
-- Ellenőrizd az endpoint URL-t
-- Ellenőrizd, hogy a technikai felhasználó jogosult-e az OPG API használatára
-
-### Nincs elérhető fájl
-
-Ha a státusz `0 - 0` tartományt mutat:
-- A pénztárgép még nem küldött naplót a NAV-hoz
-- Ellenőrizd, hogy helyes AP számot használsz-e
-
-## API dokumentáció
-
-- GitHub: https://github.com/nav-gov-hu/Online-Cash-Register-Logfile
-- NAV OPG portál: https://onlineszamla.nav.gov.hu
-
-## Issue-k és megoldások
-
-A kód a következő GitHub issue-k alapján készült:
-- [#30](https://github.com/nav-gov-hu/Online-Cash-Register-Logfile/issues/30) - Content-Type és pattern követelmények
-- [#31](https://github.com/nav-gov-hu/Online-Cash-Register-Logfile/issues/31) - Wrapper elemek
-- [#38](https://github.com/nav-gov-hu/Online-Cash-Register-Logfile/issues/38) - Namespace-ek
-- [#66](https://github.com/nav-gov-hu/Online-Cash-Register-Logfile/issues/66) - Timestamp formázás signature számításhoz
-
-## Technikai részletek
-
-- **SOAP 1.2** protokoll
-- **SHA-512** password hash (NAGYBETŰS)
-- **SHA3-512** request signature (NAGYBETŰS)
-- **Timestamp formátum XML-ben**: `YYYY-MM-DDTHH:MM:SS.sssZ` (milliszekundum pontosság)
-- **Timestamp formátum signature-ben**: `YYYYMMDDHHMMSS` (másodperc pontosság, 14 karakter)
-- **requestId pattern**: `[+a-zA-Z0-9_]{1,30}` (max 30 karakter)
-- **softwareId pattern**: `[0-9A-Z\-]{18}` (pontosan 18 karakter)
+A szolgaltatas Flask API-kent fut Render.com-on, es REST endpointokon keresztul erheto el.
 
 ---
 
-# Cloud Sync Service Deployment
-
-## Architektúra
-
-A Cloud Sync Service Render.com-on fut és két komponensből áll:
-
-1. **Web Service** (`web_api.py`): Flask REST API a manuális és automatikus szinkronizáláshoz
-2. **Cron Job** (`cron_sync.py`): Napi automatikus szinkronizálás 02:00 UTC-kor
-
-## Adalo Adatbázis Integráció
-
-### Users collection (`t_13c9aa8bd9dd423b8118565dec7fb3de`)
-
-Szükséges mezők:
-- `id` (Number, auto)
-- `Email` (Email)
-- `first_name` (Text)
-- `onlinepenztargep` (True/False) - **OPG sync enable/disable flag** (FONTOS!)
-- `navlogin` (Text) - NAV technikai felhasználó login
-- `navpassword` (Text) - NAV jelszó
-- `signKey` (Text) - NAV signing key (kötőjelekkel!)
-- `exchangeKey` (Text) - NAV exchange key (opcionális)
-- `taxNumber` (Text) - 8 számjegyű adószám
-- `apnumber` (Text) - AP szám (pl. A29200455)
-- `lastbizonylatszinkron` (Date/Time) - Utolsó szinkronizálás ideje
-- `lastbizonylatletoltve` (Text) - Utoljára letöltött fájl sorszáma
-
-**FONTOS:** Csak azok a userek lesznek szinkronizálva, akiknél `onlinepenztargep = true`!
-
-### opginvoices collection (`t_22imanannzgjm04zm2rbifxzm`)
-
-Szükséges mezők:
-- `id` (Number, auto)
-- `user_adoszama` (Text) - User adószáma
-- `user_opginvoice` (Relationship) - Kapcsolat a users collection-nel
-- `fajl_sorszama` (Text) - Fájl sorszáma
-- `volt_tranzakcio` (Text) - Nyugták száma
-- `bizonylatsummary` (Text) - Bruttó összeg (HUF)
-- `fajldatuma` (Date) - Dátum (YYYY-MM-DD)
-
-## Render.com Deployment
-
-### 1. Repo előkészítése
-
-```bash
-git add .
-git commit -m "Add cloud sync service"
-git push origin main
-```
-
-### 2. Render.com projekt létrehozása
-
-1. Menj a https://render.com oldalra és jelentkezz be
-2. New → Blueprint
-3. Connect GitHub repository
-4. A `render.yaml` automatikusan felismeri a konfigurációt
-
-### 3. Environment változók beállítása
-
-A Render dashboard-on állítsd be a következő titkosított változókat:
+## Architektura
 
 ```
-ADALO_API_KEY=5zhnd694f4hggnz8fk1g3n0vr
-API_KEY=your_secure_random_api_key_here
+                         +------------------+
+                         |   Adalo Mobile   |
+                         |       App        |
+                         +--------+---------+
+                                  |
+                                  v
++----------------+       +------------------+       +------------------+
+|  Render Cron   | ----> |    web_api.py    | ----> |  adalo_client.py |
+|  (02:00 UTC)   |       |   Flask REST API |       |  Adalo REST API  |
++----------------+       +--------+---------+       +------------------+
+                                  |
+                         +--------+---------+
+                         |                  |
+                    +----v-----+     +------v---------+
+                    |sync_     |     |online_invoice_ |
+                    |service.py|     |sync_service.py |
+                    +----+-----+     +------+---------+
+                         |                  |
+                    +----v-----+     +------v---------+
+                    |  opg.py  |     |nav_online_     |
+                    | NAV OPG  |     |invoice.py      |
+                    | SOAP API |     | NAV OSZ v3 API |
+                    +----------+     +----------------+
+                         |
+                    +----v-----+
+                    |sftp_     |
+                    |uploader.py|
+                    | FTP backup|
+                    +----------+
 ```
 
-A többi változó már be van állítva a `render.yaml`-ban.
+---
 
-### 4. Deploy
+## API Endpointok
 
-A Render automatikusan indítja a deploy-t. Két service jön létre:
-- `opg-sync-api` (Web service)
-- `opg-sync-cron` (Daily cron job)
+### `GET /health`
 
-## API Endpoints
+Health check endpoint. Nem igenyel autentikaciót.
 
-### Health Check
-
-```bash
-GET /health
-```
-
-**Response:**
+**Valasz:**
 ```json
 {
   "status": "healthy",
   "service": "opg-sync-service",
-  "timestamp": "2025-11-25T17:30:00.000Z"
+  "timestamp": "2026-01-15T10:30:00.000000"
 }
 ```
 
-### Sync Status
-
-Lekérdezi az összes user szinkronizálási státuszát.
-
+**Pelda:**
 ```bash
-curl -X GET "https://opg-sync-api.onrender.com/api/status" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl https://opg-sync-api.onrender.com/health
 ```
 
-**Response:**
+---
+
+### `POST /api/sync/all`
+
+Osszes felhasznalo szinkronizalasa, akiknel 10+ napja nem tortent szinkronizalas.
+
+**Auth:** `Authorization: Bearer {API_KEY}`
+
+**Request body (opcionalis):**
+```json
+{
+  "days_threshold": 10,
+  "current_year": 2026
+}
+```
+
+**Valasz (200):**
 ```json
 {
   "success": true,
-  "timestamp": "2025-11-25T17:30:00.000Z",
-  "total_users": 10,
-  "users": [
+  "timestamp": "2026-01-15T02:00:00.000000",
+  "total_users": 3,
+  "successful": 3,
+  "failed": 0,
+  "skipped": 2,
+  "user_results": [
     {
-      "user_id": 1,
-      "user_name": "Brúnó Szubally",
-      "user_email": "szubally.bruno@gmail.com",
-      "ap_number": "A29200455",
-      "last_sync": "2025-11-20T02:00:00.000Z",
-      "last_file_number": "1079"
+      "user_id": 146,
+      "user_name": "Bela",
+      "user_email": "bela@example.com",
+      "success": true,
+      "message": "Synced 5 files, created 5 daily revenue records",
+      "files_synced": 5,
+      "revenues_created": 5
     }
   ]
 }
 ```
 
-### Automatic Sync (All Users)
-
-Szinkronizálja az összes usert, akiknél eltelt 10+ nap az utolsó szinkron óta.
-
+**Pelda:**
 ```bash
 curl -X POST "https://opg-sync-api.onrender.com/api/sync/all" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "days_threshold": 10,
-    "current_year": 2025
-  }'
+  -d '{"days_threshold": 10}'
 ```
 
-**Response:**
+---
+
+### `POST /api/sync/<user_id>`
+
+Egyetlen felhasznalo manualis szinkronizalasa (csak OPG).
+
+**Auth:** `Authorization: Bearer {API_KEY}`
+
+**URL parameter:** `user_id` — Adalo user ID (int)
+
+**Request body (opcionalis):**
+```json
+{
+  "current_year": 2026
+}
+```
+
+**Valasz (200):**
+```json
+{
+  "timestamp": "2026-01-15T10:30:00.000000",
+  "user_id": 146,
+  "user_name": "Bela",
+  "user_email": "bela@example.com",
+  "success": true,
+  "message": "Synced 5 files, created 5 daily revenue records",
+  "files_synced": 5,
+  "revenues_created": 5
+}
+```
+
+**Hibak:** `404` ha a user nem letezik, `500` ha a szinkronizalas sikertelen.
+
+**Pelda:**
+```bash
+curl -X POST "https://opg-sync-api.onrender.com/api/sync/146" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
+
+### `GET /api/status`
+
+Osszes OPG felhasznalo szinkronizacios allapota.
+
+**Auth:** `Authorization: Bearer {API_KEY}`
+
+**Valasz (200):**
 ```json
 {
   "success": true,
-  "timestamp": "2025-11-25T17:30:00.000Z",
+  "timestamp": "2026-01-15T10:30:00.000000",
   "total_users": 5,
-  "successful": 4,
-  "failed": 1,
-  "user_results": [
+  "users": [
     {
-      "user_id": 1,
-      "user_name": "Brúnó Szubally",
-      "user_email": "szubally.bruno@gmail.com",
-      "success": true,
-      "message": "Synced 10 files, created 8 daily revenue records",
-      "files_synced": 10,
-      "revenues_created": 8
+      "user_id": 146,
+      "user_name": "Bela",
+      "user_email": "bela@example.com",
+      "ap_number": "A29200455",
+      "last_sync": "2026-01-14T02:00:00+00:00",
+      "last_file_number": "1169"
     }
   ]
 }
 ```
 
-### Manual Sync (Single User)
-
-Manuálisan szinkronizál egy adott usert (függetlenül a 10 napos threshold-tól).
-
+**Pelda:**
 ```bash
-curl -X POST "https://opg-sync-api.onrender.com/api/sync/1" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "current_year": 2025
-  }'
+curl "https://opg-sync-api.onrender.com/api/status" \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-**Response:**
+---
+
+### `POST /api/full-sync/<user_id>`
+
+Teljes szinkronizalas: OPG + Online Szamla egyutt.
+
+**Auth:** `Authorization: Bearer {API_KEY}`
+
+**URL parameter:** `user_id` — Adalo user ID (int)
+
+**Request body (opcionalis):**
 ```json
 {
-  "success": true,
-  "timestamp": "2025-11-25T17:30:00.000Z",
-  "user_id": 1,
-  "user_name": "Brúnó Szubally",
-  "user_email": "szubally.bruno@gmail.com",
-  "message": "Synced 5 files, created 4 daily revenue records",
-  "files_synced": 5,
-  "revenues_created": 4
+  "current_year": 2026
 }
 ```
 
-## Lokális Fejlesztés
+**Valasz (200):**
+```json
+{
+  "success": true,
+  "user_id": 146,
+  "user_name": "Bela",
+  "user_email": "bela@example.com",
+  "timestamp": "2026-01-15T10:30:00.000000",
+  "opg_sync": {
+    "success": true,
+    "message": "Synced 5 files, created 5 daily revenue records",
+    "files_synced": 5,
+    "revenues_created": 5
+  },
+  "online_invoice_sync": {
+    "success": true,
+    "message": "Synced 42 online invoices (5200000 Ft) + OPG (800000 Ft) = Total: 6000000 Ft, KATA: 33%",
+    "total_invoices": 42,
+    "online_invoice_net": 5200000,
+    "opg_net": 800000,
+    "combined_net": 6000000,
+    "total_kata_percent": 33
+  }
+}
+```
 
-### 1. Környezet előkészítése
+**Pelda:**
+```bash
+curl -X POST "https://opg-sync-api.onrender.com/api/full-sync/146" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
+
+### `GET|POST /api/online-invoice/query`
+
+NAV Online Szamla adatok kozvetlen lekerdezese. Harom mod tamogatott:
+
+1. **Normal**: Osszes szamla visszaadasa (`invoices` lista)
+2. **Summary**: Havi aggregacio (`summary` objektum)
+3. **Yearly**: 12 honap aggregacio (`yearlySummary` objektum)
+
+**Auth:** `X-API-Key` header vagy `apiKey` query parameter.
+Ervenyes kulcs: `aXJ2b2x0YXNlY3VyZWFwaWtleTIwMjQ=`
+
+**Parameterek (POST JSON vagy GET query):**
+
+| Parameter     | Kotelezo | Leiras                                          |
+|---------------|----------|-------------------------------------------------|
+| `login`       | igen     | NAV technikai felhasznalo login                  |
+| `password`    | igen     | NAV technikai felhasznalo jelszo                 |
+| `taxNumber`   | igen     | Adoszam (8 szamjegy, HU prefix opcionalis)       |
+| `signKey`     | igen     | Alairas kulcs                                    |
+| `exchangeKey` | igen     | Csere kulcs                                      |
+| `dateFrom`    | igen     | Kezdo datum (YYYY-MM-DD)                         |
+| `dateTo`      | igen     | Zaro datum (YYYY-MM-DD)                          |
+| `summary`     | nem      | `"true"` — havi osszesites mod                   |
+| `yearly`      | nem      | `"true"` — eves osszesites mod (12 honap)        |
+
+**Pelda (eves osszesites):**
+```bash
+curl -X POST "https://opg-sync-api.onrender.com/api/online-invoice/query" \
+  -H "X-API-Key: aXJ2b2x0YXNlY3VyZWFwaWtleTIwMjQ=" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "login": "tech_user",
+    "password": "tech_pass",
+    "taxNumber": "12345678",
+    "signKey": "sign-key-here",
+    "exchangeKey": "exchange-key-here",
+    "dateFrom": "2026-01-01",
+    "dateTo": "2026-12-31",
+    "yearly": "true"
+  }'
+```
+
+---
+
+## Modulok leirasa
+
+### `web_api.py`
+Flask alkalmazas. Definiálja az osszes REST endpointot, API key autentikaciót (`Authorization: Bearer` header), es hiba kezelest. A `gunicorn` WSGI szerveren fut produkcios kornyezetben.
+
+### `adalo_client.py`
+Adalo Collections REST API wrapper. Kezeli a rate limitinget (5 req/sec), paginaciót, es a kovetkezo muveleteket:
+- Felhasznalok lekerdezese es frissitese
+- Napi bevetel rekordok letrehozasa
+- Szinkronizacios statusz kezeles
+- Online Szamla aggregalt adatok frissitese
+
+### `sync_service.py`
+OPG szinkronizacios logika. Fobb funkciok:
+- NAV OPG statusz lekerdezes (elerheto fajlok min/max szama)
+- Naplofajlok letoltese (ZIP + P7B + XML kinyeres)
+- XML feldolgozas: nyugtak kinyerese, datum es osszeg parszolas
+- Napi bevetel aggregalas fajlonkent
+- Adalo rekordok letrehozasa es szinkronizacios statusz frissites
+- Opcionalis FTP feltoltes
+
+### `online_invoice_api.py`
+Flask endpoint handler a NAV Online Szamla lekerdezesekhez. Harom modot tamogat:
+- **Normal**: Osszes szamla visszaadasa
+- **Summary**: Havi aggregacio (netto osszeg, storno, modositott szamlak)
+- **Yearly**: 12 honapos aggregacio honapokra bontva
+
+Kezeli a cross-year storno szamlakat (elozo evi teljesitesi datumu stornok kihagyasa).
+
+### `online_invoice_sync_service.py`
+Online Szamla adatok szinkronizalasa Adalo felhasznalo rekordokba. Fobb funkciok:
+- 12 honap szamla lekerdezes es aggregalas
+- KATA szazalek szamitas (havi es eves szinten)
+- Evkozben kezdett vallalkozasok aranyos limit szamitasa
+- OPG + Online Szamla osszesitett bevetel szamitas
+- Adalo mezo frissites (havonkenti netto, szamlaszam, KATA %)
+
+### `nav_online_invoice.py`
+NAV Online Szamla API v3 Python kliens. Implementalja:
+- XML keres epites (header, user autentikacio, software blokk)
+- SHA-512 jelszo hash es SHA3-512 keres alairas
+- `queryInvoiceDigest` endpoint hivasa paginacioval
+- XML valasz feldolgozas dict-be
+- Adoszam normalizalas (HU prefix, kotojel kezeles)
+
+### `sftp_uploader.py`
+FTP feltolto modul XML fajlok biztonsagi mentesere. Konyvtarstruktura:
+`{base_path}/{ap_number}/{year}/` (pl. `users/opg_bizonylatok/A29200455/2026/`)
+
+### `opg.py`
+NAV OPG SOAP API kliens. CLI eszkoz es modul:
+- `status` — Penztargep statusz lekerdezes (elerheto fajl tartomany)
+- `files` — Naplofajlok letoltese adott tartomanybol
+- `download-all` — Osszes elerheto fajl letoltese, ZIP kibontas, P7B → XML konverzio
+
+SOAP/MTOM kommunikacio a NAV OPG vegponttal (`api-onlinepenztargep.nav.gov.hu`).
+
+### `cron_sync.py`
+Napi automatikus szinkronizacio script. A Render.com cron job hivja naponta 02:00 UTC-kor.
+HTTP POST keressel hivja a web service `/api/sync/all` endpointjat.
+
+---
+
+## Adatfolyamok
+
+### OPG Sync Flow
+
+```
+1. Adalo-bol lekerdezi a felhasznalokat (onlinepenztargep=true, 10+ napos threshold)
+2. Minden felhasznalora:
+   a. NAV OPG status query -> elerheto fajlok (min-max fileNumber)
+   b. Utolso szinkronizalt fajl utan ujak letoltese
+   c. NAV valasz: MTOM multipart -> ZIP mellekletek
+   d. ZIP kibontas -> P7B fajlok
+   e. P7B -> XML konverzio (OpenSSL CMS vagy regex)
+   f. XML feldolgozas: NYN (nyugta) elemek, SUM (osszeg), CNC (sztorno)
+   g. Aggregalas fajlonkent: datum, nyugtaszam, osszbevetel
+   h. Adalo-ba iras: revenues collection (1 rekord / fajl)
+   i. Opcionalis: XML fajlok FTP feltoltese
+   j. User sync statusz frissites (lastbizonylatszinkron, lastbizonylatletoltve)
+```
+
+### Online Invoice Sync Flow
+
+```
+1. NAV Online Szamla API-n 12 honap lekerdezese (queryInvoiceDigest)
+2. Honaponkent:
+   a. Szamlak lekerdezese paginacioval
+   b. Aggregalas: netto osszeg, storno, modositott
+   c. Cross-year stornok szurese
+   d. OPG havi bevetel hozzaadasa (revenues collection-bol)
+   e. KATA szazalek szamitas: (OPG + Online Szamla) / havi limit * 100
+3. Eves szinten:
+   a. Osszes honap osszegzese
+   b. Evkozben kezdett vallalkozas: aranyos eves limit
+   c. Eves KATA %: osszesitett bevetel / eves limit * 100
+4. Adalo user rekord frissitese (havi netto, szamlaszam, KATA %, stb.)
+```
+
+### Full Sync Flow
+
+```
+1. User letoltese Adalo-bol
+2. OPG sync (ha van apnumber + navlogin + navpassword)
+3. Online Invoice sync (ha van navlogin + navpassword + signKey + exchangeKey + taxNumber)
+4. Osszesitett eredmeny visszaadasa
+```
+
+---
+
+## Kornyezeti valtozok
+
+### Kotelezo
+
+| Valtozo                          | Leiras                                      |
+|----------------------------------|---------------------------------------------|
+| `ADALO_APP_ID`                   | Adalo alkalmazas ID                          |
+| `ADALO_API_KEY`                  | Adalo API Bearer token (titkos)              |
+| `ADALO_USERS_COLLECTION_ID`     | Users collection ID                          |
+| `ADALO_REVENUES_COLLECTION_ID`  | Revenues (napi bevetel) collection ID        |
+| `API_KEY`                        | API autentikacio kulcs a sync endpointokhoz  |
+
+### Opcionalis
+
+| Valtozo              | Alapertelmezett                        | Leiras                               |
+|----------------------|----------------------------------------|---------------------------------------|
+| `FTP_HOST`           | —                                      | FTP szerver hostname                  |
+| `FTP_USER`           | —                                      | FTP felhasznalonev                    |
+| `FTP_PASSWORD`       | —                                      | FTP jelszo                            |
+| `FTP_PORT`           | `21`                                   | FTP port                              |
+| `FTP_BASE_PATH`      | `users/opg_bizonylatok`               | FTP base konyvtar                     |
+| `WEB_SERVICE_URL`    | `https://opg-sync-api.onrender.com`   | Web service URL (cron job szamara)    |
+| `PORT`               | `5000`                                 | Lokalis fejlesztesi port              |
+
+---
+
+## Deployment (Render.com)
+
+### Build es start
+
+- **Build command:** `pip install -r requirements.txt`
+- **Start command:** `gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 web_api:app`
+- **Health check:** `GET /health`
+
+### Cron job
+
+A `cron_sync.py` naponta 02:00 UTC-kor fut es hivja a `/api/sync/all` endpointot.
+A `render.yaml` tartalmazza a cron job konfiguraciót.
+
+### render.yaml struktura
+
+```yaml
+services:
+  # Web service - Flask API
+  - type: web
+    name: opg-sync-api
+    env: python
+    region: frankfurt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 web_api:app
+
+  # Cron job - Daily sync
+  - type: cron
+    name: opg-daily-sync
+    env: python
+    region: frankfurt
+    schedule: "0 2 * * *"
+    startCommand: python cron_sync.py
+```
+
+### Deploy lepesei
+
+1. GitHub repository csatlakoztatasa Render.com-on
+2. **New -> Blueprint** — Render automatikusan felismeri a `render.yaml`-t
+3. Environment valtozok beallitasa a Render Dashboard-on (titkos kulcsok)
+4. Deploy es teszteles: `curl https://opg-sync-api.onrender.com/health`
+
+---
+
+## Adalo mezok
+
+### Users collection
+
+| Mezo                       | Tipus    | Leiras                                    |
+|----------------------------|----------|-------------------------------------------|
+| `Email`                    | string   | Felhasznalo email                          |
+| `first_name`               | string   | Nev                                        |
+| `onlinepenztargep`         | boolean  | OPG szinkronizalas engedelyezve             |
+| `navlogin`                 | string   | NAV technikai user login                   |
+| `navpassword`              | string   | NAV technikai user jelszo                  |
+| `signKey`                  | string   | NAV alairas kulcs                          |
+| `exchangeKey`              | string   | NAV csere kulcs                            |
+| `taxNumber`                | string   | Adoszam (pl. 69785346-1-29)                |
+| `apnumber`                 | string   | Penztargep AP szam (pl. A29200455)          |
+| `lastbizonylatszinkron`    | datetime | Utolso OPG szinkronizalas idopontja         |
+| `lastbizonylatletoltve`    | string   | Utolso letoltott fajl sorszama              |
+| `evkozbenkezdte`           | boolean  | Evkozben kezdett vallalkozas               |
+| `evkozbenkezdtedatum`      | datetime | Evkozben kezdes datuma                     |
+| `jannet` .. `decnet`       | number   | Havi netto online szamla osszeg            |
+| `janinvoices` .. `decinvoices` | number | Havi szamlaszam                        |
+| `novincoices`              | number   | Novemberi szamlaszam (typo az Adalo-ban!)   |
+| `jankatapercent` .. `deckatapercent` | number | Havi KATA szazalek            |
+| `totalnet`                 | number   | Eves osszes online szamla netto             |
+| `allinvoices`              | number   | Eves osszes szamlaszam                     |
+| `totalkatapercent`         | number   | Eves osszesitett KATA szazalek             |
+| `userkerete`               | number   | KATA eves keret (aranyos, ezer Ft-ra kerekitett) |
+| `currentMonth_name`        | string   | Aktualis honap neve (magyarul)             |
+| `currentMonth_amount`      | number   | Aktualis honap netto osszege                |
+| `lastupdate`               | datetime | Utolso Online Szamla frissites idopontja    |
+
+### Revenues collection
+
+| Mezo                | Tipus    | Leiras                                    |
+|---------------------|----------|-------------------------------------------|
+| `user_adoszama`     | string   | Felhasznalo adoszama                       |
+| `user_opginvoice`   | relation | Kapcsolat a Users collection-nel (user ID) |
+| `fajl_sorszama`     | string   | NAV naplofajl sorszama                     |
+| `volt_tranzakcio`   | string   | Tranzakciok (nyugtak) szama                 |
+| `bizonylatsummary`  | string   | Napi osszbevetel (Ft)                      |
+| `fajldatuma`        | date     | Fajl datuma (YYYY-MM-DD)                   |
+
+---
+
+## NAV API-k
+
+### OPG API (Online Penztargep)
+
+- **Base URL:** `https://api-onlinepenztargep.nav.gov.hu`
+- **Protokoll:** SOAP 1.2 (application/soap+xml)
+- **Endpointok:**
+  - `/queryCashRegisterFile/v1/queryCashRegisterStatus` — Penztargep statusz
+  - `/queryCashRegisterFile/v1/queryCashRegisterFile` — Naplofajlok letoltese
+- **Valasz formatum:** MTOM/multipart (ZIP mellekletek)
+- **Autentikacio:** Technikai user (login + SHA-512 password hash + SHA3-512 request signature)
+- **Namespace-ek:**
+  - API: `http://schemas.nav.gov.hu/OPF/1.0/api`
+  - Common: `http://schemas.nav.gov.hu/NTCA/1.0/common`
+
+### Online Szamla API v3
+
+- **Prod URL:** `https://api.onlineszamla.nav.gov.hu/invoiceService/v3`
+- **Test URL:** `https://api-test.onlineszamla.nav.gov.hu/invoiceService/v3`
+- **Protokoll:** REST XML
+- **Fo endpoint:** `/queryInvoiceDigest` — Szamla osszesitok lekerdezese
+- **Autentikacio:** Technikai user (login + SHA-512 password hash + SHA3-512 request signature)
+- **Namespace-ek:**
+  - API: `http://schemas.nav.gov.hu/OSA/3.0/api`
+  - Common: `http://schemas.nav.gov.hu/NTCA/1.0/common`
+- **Paginacio:** `page` parameter (1-tol indulva), `availablePage` a valaszban
+
+---
+
+## Lokalis fejlesztes
+
+### Elofeltetelek
+
+- Python 3.11+
+- OpenSSL (P7B -> XML konverziohoz)
+
+### Telepites
 
 ```bash
-# Dependencies telepítése
+# Virtualis kornyezet letrehozasa
+python3 -m venv venv
+source venv/bin/activate
+
+# Fuggosegek telepitese
 pip install -r requirements.txt
 
-# .env fájl létrehozása
+# Kornyezeti valtozok masolasa
 cp .env.example .env
-# Szerkeszd a .env fájlt és add meg az API kulcsokat
+# Szerkeszd a .env fajlt a valos ertekekkel
 ```
 
-### 2. Adalo tesztelés
+### Futtatas
 
 ```bash
-# Adalo client tesztelése
-python3 adalo_client.py
+# Fejlesztoi szerver
+python web_api.py
 
-# Sync service tesztelése
-python3 sync_service.py
-```
-
-### 3. Web API indítása
-
-```bash
-# Development mode
-python3 web_api.py
-
-# Production mode (Gunicorn)
+# Vagy gunicorn-nal (produkcios mod)
 gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 web_api:app
 ```
 
-### 4. API tesztelése lokálisan
+### Teszteles
 
 ```bash
 # Health check
 curl http://localhost:5000/health
 
-# Sync all users
+# Sync all
 curl -X POST http://localhost:5000/api/sync/all \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json"
 
-# Sync single user
-curl -X POST http://localhost:5000/api/sync/1 \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json"
+# Egyedi user sync
+curl -X POST http://localhost:5000/api/sync/146 \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Full sync (OPG + Online Szamla)
+curl -X POST http://localhost:5000/api/full-sync/146 \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
-
-## Működési Logika
-
-### Automatikus Napi Szinkronizálás
-
-1. **Cron job indul** (naponta 02:00 UTC-kor)
-2. **Users lekérdezése** Adalo-ból
-3. **Szűrés**: csak azok, akiknél eltelt 10+ nap az utolsó szinkron óta
-4. **Minden userre**:
-   - NAV státusz lekérdezése (elérhető fájlok)
-   - Új fájlok letöltése (last_file_number óta)
-   - XML feldolgozás és nyugták kinyerése
-   - Napi aggregálás (aktuális év, csak sikeres nyugták)
-   - Adalo opginvoices rekordok létrehozása
-   - User sync státusz frissítése
-
-### Napi Aggregálás Szabályok
-
-- **Current year csak**: Csak az aktuális év nyugtái (DTS mező alapján)
-- **Sikeres nyugták**: Töröltek kihagyása (CNC=1 nyugták)
-- **Bruttó összeg**: SUM mező (forintban)
-- **Egy rekord naponta**: Ugyanazon nap összes nyugtája összesítve
-
-### Rate Limiting
-
-- Adalo API: 5 request/sec (0.2s delay között)
-- NAV API: Nincs hivatalos limit, de 120s timeout
-- Retry logic: 429 (rate limit) esetén 1s várakozás és újrapróbálkozás
-
-## Fájlok
-
-### Core Components
-- `opg.py` - NAV API kliens (SOAP kommunikáció, P7B extraction)
-- `adalo_client.py` - Adalo REST API wrapper
-- `sync_service.py` - Szinkronizálási logika (NAV + XML + aggregáció)
-- `web_api.py` - Flask REST API endpoints
-- `cron_sync.py` - Cron job script
-
-### Configuration
-- `requirements.txt` - Python dependencies
-- `render.yaml` - Render.com deployment config
-- `.env.example` - Environment változók template
-
-### Documentation
-- `README.md` - Teljes dokumentáció
-- `extract_p7b.py` - Standalone P7B extraction tool (opcionális)
-
-## Troubleshooting
-
-### "Missing NAV credentials" hiba
-
-Ellenőrizd, hogy a user-nek be vannak-e állítva az összes szükséges mező:
-- `navlogin`
-- `navpassword`
-- `signKey` (kötőjelekkel!)
-- `taxNumber`
-- `apnumber`
-
-### "Failed to query NAV status" hiba
-
-- Ellenőrizd, hogy az AP szám helyes-e
-- Ellenőrizd, hogy a NAV credentials érvényesek-e
-- Próbáld meg az exchange key-t használni (ha van)
-
-### "No new files to sync" üzenet
-
-Ez normális, ha már minden fájl le van töltve. A user `lastbizonylatletoltve` értéke megegyezik a NAV szerver max file number-ével.
-
-### Rate limit exceeded
-
-Ha túl sok user van, állítsd be a cron job gyakoriságát ritkábbra, vagy növeld a delay-t az `adalo_client.py`-ban.
-
-## Költségek (Render.com)
-
-- **Starter Plan**: $7/hónap (web service + cron job)
-- **Free Plan**: Korlátozott óraszám (750 óra/hónap), alvó üzemmód 15 perc inaktivitás után
-
-## Biztonság
-
-- API key authentication minden véd végponton
-- HTTPS kommunikáció
-- NAV credentials titkosítatlanul tárolva Adalo-ban (később titkosítás ajánlott)
-- Environment változók titkosítva Render.com-on
-
-## Licenc
-
-MIT

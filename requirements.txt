@@ -1,18 +1,4 @@
-# Python dependencies for OPG Sync Service
-
-# HTTP requests (for NAV API and Adalo API)
 requests>=2.31.0
-
-# Web framework
 Flask>=3.0.0
-
-# Production WSGI server
 gunicorn>=21.2.0
-
-# Cryptography for NAV Online Invoice API (AES decryption)
 pycryptodome>=3.19.0
-
-# FTP support (ftplib is built-in, no extra dependency needed)
-
-# Claude AI CLI support
-anthropic>=0.34.0
