@@ -13,3 +13,6 @@ gunicorn>=21.2.0
 pycryptodome>=3.19.0
 
 # FTP support (ftplib is built-in, no extra dependency needed)
+
+# Claude AI CLI support
+anthropic>=0.34.0
